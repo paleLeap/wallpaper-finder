@@ -1,0 +1,4 @@
+# Batch files are read by cmd.exe, which wants CRLF. Everything else stays as
+# it is written, so a Windows checkout does not quietly rewrite the Python.
+* -text
+*.cmd text eol=crlf

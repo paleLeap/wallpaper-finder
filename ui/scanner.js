@@ -12,9 +12,21 @@
 
 'use strict';
 
+/* The one door to the host.
+ *
+ * It used to be WebKit's message handlers, which exist only in WebKit. The
+ * host is Qt now -- so that the same program runs on Windows, where WebKit's
+ * GTK build does not exist at all -- and Qt hands the page a single object
+ * over a web channel instead of a handler per name. The channel name travels
+ * as an argument.
+ *
+ * `_wallscan_send` is installed by the host before this file runs, and queues
+ * anything sent before the channel has finished connecting. That gap is real:
+ * this script runs first, and a button pressed inside it would otherwise
+ * vanish with nothing said. Everything below this line is unchanged, which is
+ * the point of there only ever having been one call site. */
 const send = (channel, payload) =>
-  window.webkit.messageHandlers[channel].postMessage(
-    payload === undefined ? '' : payload);
+  window._wallscan_send(channel, payload === undefined ? '' : payload);
 
 const note = (what) => send('log', what);
 

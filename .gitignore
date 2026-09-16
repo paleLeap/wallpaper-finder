@@ -6,3 +6,6 @@ __pycache__/
 contact.txt
 keys.txt
 offered.txt
+
+# A virtual environment beside the program, if you make one there.
+.venv

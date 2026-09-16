@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# Open the wallpaper scanner.
+# Open Wallpaper Finder.
 #
 # No arguments. Output goes to the terminal, because this program's stdout is
 # the only instrument for what its page did.
+#
+# A virtual environment beside this file is used if there is one, so that
+# `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` is
+# enough of an install and nothing has to be put on the system Python.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
+if [ -x .venv/bin/python ]; then
+  exec .venv/bin/python scanner.py "$@"
+fi
 exec python3 scanner.py "$@"

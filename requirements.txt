@@ -1,0 +1,8 @@
+# The whole dependency list. Everything else this program uses is in Python's
+# own standard library.
+#
+# PySide6 is Qt: the window, the browser engine the interface is drawn in, the
+# local socket that stops a second copy opening, and the painter that draws
+# the placeholder previews. It is a large download -- around 250 MB -- because
+# a whole Chromium comes with it.
+PySide6>=6.6

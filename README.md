@@ -8,6 +8,8 @@ fetch, and it fills a grid with previews as they arrive — each labelled with i
 real resolution. Tick the ones you like, press **Submit selections**, and only
 those are downloaded at full size into `~/Pictures/wallpapers`.
 
+Runs on **Linux and Windows**.
+
 A few things it does on purpose:
 
 - **Only large wallpapers.** Nothing below 3840×2160 is offered.
@@ -22,44 +24,49 @@ A few things it does on purpose:
   offered record — except the wallpapers themselves.
 
 It saves wallpapers. It does not set them; point whatever already rotates your
-desktop at `~/Pictures/wallpapers`.
-
-## Requirements
-
-Linux with X11, and:
-
-- Python 3.9+
-- GTK 3, WebKit2GTK 4.1, PyGObject, pycairo
-- `xdotool` (only used by `launch.sh`, for the desktop entry)
-
-On Debian/Ubuntu:
-
-```bash
-sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 xdotool
-```
-
-On Arch:
-
-```bash
-sudo pacman -S python-gobject python-cairo gtk3 webkit2gtk-4.1 xdotool
-```
-
-No pip packages — everything else is the standard library.
+desktop at your wallpapers folder.
 
 ## Install
+
+You need **Python 3.9 or newer**. Everything else is one package — PySide6,
+which is Qt: the window, the browser engine the interface is drawn in, and the
+painter behind the placeholder previews. It's a big download (~250 MB) because
+a whole Chromium comes with it. Nothing else is required.
+
+**Linux**
 
 ```bash
 git clone https://github.com/paleLeap/wallpaper-finder.git
 cd wallpaper-finder
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./scan
 ```
 
-That's it. `./scan` runs it in a terminal, which is where its output goes.
+**Windows**
 
-To put it in your application menu instead, edit `wallpaper-scanner.desktop` so
+```
+git clone https://github.com/paleLeap/wallpaper-finder.git
+cd wallpaper-finder
+py -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+scan.cmd
+```
+
+(No git? Use the green **Code** button on GitHub → Download ZIP, unpack it, and
+run the same two commands inside the folder.)
+
+`scan` and `scan.cmd` both keep a console, which is where the program says what
+it did — worth having the first few times. `scan-quiet.cmd` starts it with no
+console, which is what a Windows shortcut should point at: right-click it →
+**Send to** → **Desktop (create shortcut)**.
+
+On Linux, for an application-menu entry, edit `wallpaper-finder.desktop` so
 `Exec=` points at this folder's `launch.sh`, then copy it to
-`~/.local/share/applications/`. `launch.sh` is the menu-safe launcher: pressing
-the menu entry twice raises the open window rather than starting a second copy.
+`~/.local/share/applications/`.
+
+Pressing a menu entry or shortcut twice raises the open window instead of
+starting a second copy — two scanners would be two searches writing into one
+record.
 
 ## Accounts and keys
 
@@ -91,14 +98,31 @@ program never prints a key.
 
 ## Settings
 
-Two environment variables, both mainly for testing:
+Environment variables, all optional:
 
+- `WALLSCAN_SCALE` — makes the whole window bigger, e.g. `1.5`. The layout is
+  authored in real pixels and draws at 1:1 by default, which on a high-DPI
+  laptop can come out small.
 - `WALLSCAN_LIBRARY` — where wallpapers are saved (default `~/Pictures/wallpapers`)
 - `WALLSCAN_OFFERED` — where the offered record lives (default `offered.txt` here)
+
+`python scanner.py --harvest` refreshes the theme list from the sources. It
+takes about fifteen minutes and the program does it by itself in the background
+when the shipped list is over 30 days old, so you shouldn't need to.
 
 ## A note on where this came from
 
 This was built for one particular desktop — a 4K panel running openbox and
-picom — and a few of its choices are tuned to that: it forces its own text
-scaling back to normal, draws its own window frame, and leaves compositor
-opacity alone. It should behave on any X11 desktop, but that's where it grew up.
+picom — and then ported to run on Windows too. The port swapped the window
+underneath it from GTK to Qt, because the browser engine the Linux version used
+(WebKit2GTK) doesn't exist on Windows at all. The interface itself is the same
+page on both.
+
+One consequence worth knowing: the rounded corners need a compositor. Windows
+always has one. Linux needs picom or similar running, which most desktops do —
+without one, the corners come out black instead of transparent.
+
+**The Linux side has been run and tested; the Windows side has been written but
+not yet run on Windows.** If you're the first to try it there and something is
+wrong, run `scan.cmd` rather than the quiet one and open an issue with what it
+printed.
