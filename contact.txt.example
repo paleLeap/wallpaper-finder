@@ -1,0 +1,13 @@
+# Wikimedia refuses most Commons previews unless the request says how to reach
+# whoever is running the tool. Measured 2026-08-22: 8 of 8 previews came back
+# with a contact in the header, 4 of 8 without, at the same speed.
+#
+# Rename this file to contact.txt and put ONE line in it — an email address or
+# a URL. It is sent to Wikimedia in the request header on every call, and to
+# wallhaven too. Nothing else sees it, and it is never written into any file
+# this program saves.
+#
+# contact.txt is in .gitignore, so it will not be committed.
+#
+# Example:
+# someone@example.com

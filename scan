@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Open the wallpaper scanner.
+#
+# No arguments. Output goes to the terminal, because this program's stdout is
+# the only instrument for what its page did.
+set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")"
+exec python3 scanner.py "$@"

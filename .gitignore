@@ -1,0 +1,8 @@
+# Everything the program writes stays in its own folder -- and none of it
+# belongs in the repo, except the harvested theme list.
+cache/*
+!cache/themes.json
+__pycache__/
+contact.txt
+keys.txt
+offered.txt

@@ -1,0 +1,20 @@
+# API keys for the sources that need one. Rename this file to keys.txt.
+#
+# One `name = value` a line. Nothing in this program ever prints a key, and
+# keys.txt is in .gitignore so it cannot reach the Mantle repo.
+#
+# Sign up (all free):
+#   flickr      https://www.flickr.com/services/apps/create/
+#   unsplash    https://unsplash.com/developers
+#   pexels      https://www.pexels.com/api/
+#   pixabay     https://pixabay.com/api/docs/
+#   smithsonian https://api.data.gov/signup/
+#   reddit      https://www.reddit.com/prefs/apps   (an app, not just a key)
+#
+# Only fill in the ones you have. A source with no key is not offered, and
+# says so on its own button rather than failing when you press Search.
+
+# flickr =
+# unsplash =
+# pexels =
+# pixabay =

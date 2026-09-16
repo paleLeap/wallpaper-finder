@@ -1,0 +1,624 @@
+/* wallpaper-scanner -- the palette and the layout.
+ *
+ * The palette is harbor's, carried here as its own copy rather than shared,
+ * so harbor can change without this window noticing.
+ *
+ * One CSS px is one device px: scanner.py forces this process's GTK DPI back
+ * to 96, which cancels the desktop's 2x text scale. Every number below is
+ * therefore a real pixel on the panel.
+ *
+ * Arbor's standing rule holds throughout: every layer is rounded. A square
+ * layer under a rounded one shows a pointed corner, and that is the defect
+ * this desktop already has elsewhere.
+ */
+
+:root {
+  --ground:     #0C1712;
+  --panel:      #15231C;
+  --edge:       #24382E;
+  /* Muted and earthy, at his instruction 2026-08-22. harbor's greens
+     (#0B8E4F / #0FC76F) read as neon at this size and in this quantity --
+     every selected pill, every fill button. These sit in the same family and
+     several steps back in saturation and lightness. */
+  --accent:     #3E6B4F;
+  --accent-hi:  #4F8664;
+  --text:       #EAF0ED;
+  --text-dim:   #9BB0A6;
+  /* There is no red in this program, at his instruction. Stop is told apart
+     from Go by being earth rather than green, not by being a warning.
+     Olive, not ochre: an ochre's strongest channel is red, and a warm brown
+     sitting next to a green button reads as reddish whatever its name is.
+     Here green edges red, so it cannot. */
+  --warm:       #66684A;
+  --warm-hi:    #7C7E5C;
+  --radius:     26px;
+  --radius-in:  14px;
+  --strip-h:    86px;   /* must match STRIP_H in scanner.py */
+  --btn-h:      44px;
+  --pad:        16px;
+  --anim:       220ms;
+  --ease:       cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: transparent;      /* the shape is cut by the host; anything
+                                   painted out here would square the corners */
+  overflow: hidden;
+  font-family: Inter, "DejaVu Sans", system-ui, sans-serif;
+  color: var(--text);
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+#frame {
+  width: 100%; height: 100%;
+  background: var(--ground);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Only the stage named by the host is in the layout at all. Hidden rather
+   than transparent: a stage still taking space would take clicks with it. */
+.stage { display: none; flex: 1; min-height: 0; }
+/* #bar is a flex column; the rule sits with the rest of its styles below. */
+#frame[data-stage="ask"]  #ask  { display: flex; }
+#frame[data-stage="grid"] #grid { display: flex; }
+
+/* Rolled up: the strip is all that is left, so nothing below it may draw. */
+#frame.rolled #results { display: none; }
+
+/* ---------------- stage one: the bar ---------------- */
+
+#bar {
+  position: relative;
+  padding: 10px 14px 14px;
+  flex-direction: column;
+  gap: 8px;
+}
+#frame[data-stage="bar"] #bar { display: flex; }
+
+/* The window's own buttons, right-aligned in a strip of their own. */
+#bartop {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  height: 26px;
+}
+
+.wbtn {
+  width: 30px; height: 26px;
+  display: grid; place-items: center;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--anim) var(--ease), color var(--anim) var(--ease);
+}
+.wbtn svg { width: 13px; height: 13px; }
+.wbtn:hover { background: var(--panel); color: var(--text); border-color: var(--accent); }
+
+.barrow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--pad);
+  align-items: stretch;
+}
+
+.pane {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-in);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane h2 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* Both lists scroll. The theme list will be longer once it comes from the
+   sites themselves, and a list that grows off the bottom of a fixed bar is a
+   list you cannot reach. */
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+}
+
+/* A pill that is either on or off. Big enough to hit without aiming. */
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--anim) var(--ease),
+              color var(--anim) var(--ease),
+              border-color var(--anim) var(--ease);
+}
+.pick:hover { border-color: var(--accent); color: var(--text); }
+.pick.on {
+  background: var(--accent);
+  border-color: var(--accent-hi);
+  color: var(--text);
+}
+.pick[disabled] {
+  opacity: 0.38;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.pick[disabled]:hover { border-color: var(--edge); color: var(--text-dim); }
+
+/* Why a source is unavailable, said on the pill rather than hidden in a
+   tooltip -- WebKit's tooltip cannot be styled, so there is nowhere else for
+   this to go that is still legible. */
+.pick .why {
+  font-size: 11px;
+  opacity: 0.75;
+  font-style: italic;
+}
+
+/* The typed half of the search, directly under the Themes heading and above
+   the pills, which is where he asked for it. `.pane` was already a flex
+   column, so it needed no layout change to sit there.
+
+   Text selection is turned back on for this one element: the rest of the
+   window refuses it, because a window you drag by its face should not paint
+   half of itself blue when you drag it. A box you type in is the exception. */
+#themesearch {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 32px;
+  margin-bottom: 8px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--edge);
+  border-radius: 16px;      /* the same radius as the pills below it */
+  outline: none;
+  -webkit-user-select: text;
+  cursor: text;
+  transition: border-color var(--anim) var(--ease);
+}
+#themesearch:focus { border-color: var(--accent-hi); }
+
+/* ---- the main colour, in a strip under both panes ---- */
+
+#colourpane {
+  flex: 0 0 auto;           /* the panes above take the stretch, not this */
+  padding: 8px 12px 10px;
+}
+#colourpane h2 { margin-bottom: 7px; }
+
+#colourlist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+/* One swatch. Rounded like everything else here -- arbor's rule holds for a
+   30px square as much as for the window. The colour itself is set by the
+   host, because wallhaven decides what the colours are. */
+.swatch {
+  /* 28 and not 30, and a 5px gap and not 6: thirty swatches plus the "Any
+     colour" pill come to 1087px inside a 1126px pane, so the row fits on one
+     line at the width the window opens at. At 30px they wrapped, and the
+     wrapped pair was clipped by the pane -- seen on screen 2026-08-26, not
+     reasoned about. */
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  padding: 0;
+  cursor: pointer;
+  transition: transform var(--anim) var(--ease),
+              box-shadow var(--anim) var(--ease),
+              border-color var(--anim) var(--ease);
+}
+.swatch:hover { border-color: var(--accent-hi); transform: translateY(-1px); }
+
+/* The chosen one. A ring rather than a tick: a tick drawn on the swatch has
+   to be either light or dark, and this palette runs from #000000 to #ffffff,
+   so either one disappears on some of them. The ring sits outside the colour
+   and is legible against all thirty. */
+.swatch.on {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--accent-hi);
+}
+
+/* "Any colour" -- the way back out, and where this starts. A pill rather than
+   a swatch, because it is the absence of a colour and there is no square that
+   says that. */
+.swatch.any {
+  width: auto;
+  height: 28px;
+  padding: 0 13px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  border-radius: 15px;
+}
+.swatch.any.on {
+  background: var(--accent);
+  color: var(--text);
+  box-shadow: none;
+  border-color: var(--accent-hi);
+}
+
+/* The right-hand end of the bar: Search taking the height, and the forget
+   button tucked under it. A column rather than a third pane -- these two are
+   actions, and the panes either side of them are choices. */
+.endcol {
+  flex: 0 0 auto;
+  width: 186px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.endcol .go { flex: 1; min-width: 0; }
+.endcol .flat {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Nothing to forget: still there, so the button does not appear and disappear
+   under the pointer, but plainly inert. */
+.endcol .flat[disabled] { opacity: 0.4; cursor: not-allowed; }
+.endcol .flat[disabled]:hover { color: var(--text-dim); border-color: var(--edge); }
+
+.go {
+  flex: 0 0 auto;
+  min-width: 168px;
+  border: 1px solid var(--accent-hi);
+  border-radius: var(--radius-in);
+  background: var(--accent);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background var(--anim) var(--ease);
+}
+.go:hover  { background: var(--accent-hi); }
+.go.small  { min-width: 0; height: var(--btn-h); padding: 0 18px; font-size: 14px; }
+.go[disabled] { opacity: 0.4; cursor: not-allowed; background: var(--accent); }
+
+.flat {
+  height: var(--btn-h);
+  padding: 0 20px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-in);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.flat:hover { color: var(--text); border-color: var(--accent); }
+
+/* The close square. Sits in the corner of the bar, clear of the panels. */
+.xbtn {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--anim) var(--ease), color var(--anim) var(--ease);
+}
+.xbtn svg { width: 15px; height: 15px; }
+.xbtn:hover { background: var(--edge); color: var(--text); border-color: var(--accent); }
+.xbtn.inline { position: static; width: var(--btn-h); height: var(--btn-h); border-radius: 11px; }
+
+/* ---------------- stage two: how many ---------------- */
+
+#ask {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px;
+}
+/* Small and quiet. It is a label on a box, not a heading. */
+#ask h1 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+#howmany {
+  width: 132px;
+  height: 46px;
+  text-align: center;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-in);
+  outline: none;
+  -webkit-user-select: text;
+}
+#howmany:focus { border-color: var(--accent-hi); }
+
+.hint { font-size: 11px; color: var(--text-dim); opacity: 0.8; }
+
+.askrow { display: flex; gap: 8px; margin-top: 2px; justify-content: center; }
+.askrow .go { min-width: 104px; height: 38px; font-size: 13.5px; }
+.askrow .flat { height: 38px; padding: 0 16px; font-size: 13.5px; }
+
+/* ---------------- stage three: the grid ---------------- */
+
+#grid { flex-direction: column; }
+
+#strip {
+  flex: 0 0 var(--strip-h);
+  height: var(--strip-h);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--edge);
+}
+
+/* The long strip on the left: which source, and how far through. */
+#status {
+  flex: 1;
+  min-width: 0;
+  height: var(--btn-h);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-in);
+  font-size: 14px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rollbtn {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.rollbtn svg { width: 15px; height: 15px; }
+.rollbtn:hover { color: var(--text); border-color: var(--accent); }
+
+#stripright { display: flex; align-items: center; gap: 10px; }
+
+.stop {
+  height: var(--btn-h);
+  min-width: 118px;
+  padding: 0 20px;
+  border: 1px solid var(--warm-hi);
+  border-radius: var(--radius-in);
+  background: var(--warm);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.stop:hover { background: var(--warm-hi); }
+/* Resumed reads as "go", so it takes the accent rather than the warning red. */
+.stop.resume { background: var(--accent); border-color: var(--accent-hi); }
+
+/* The Yes on a confirm. Heavier than the No beside it -- weight and a lifted
+   edge, which is what the red used to be doing. */
+.heavy {
+  height: 38px;
+  min-width: 104px;
+  border: 1px solid var(--accent-hi);
+  border-radius: var(--radius-in);
+  background: var(--accent);
+  color: var(--text);
+  font: inherit; font-size: 13.5px; font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.heavy:hover { background: var(--accent-hi); }
+
+#results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);   /* rows of four, as drawn */
+  grid-auto-rows: max-content;             /* never share out spare height */
+  gap: 14px;
+  padding: 14px;
+  align-content: start;
+}
+
+/* One preview, in a box that is always 16:9 whatever shape the picture is --
+   a portrait result among landscapes would otherwise make its whole row as
+   tall as itself.
+
+   The height comes from `padding-top: 56.25%`, not from `aspect-ratio`, and
+   that is the whole point. `aspect-ratio` on a grid item in a `1fr` column
+   asks the browser to size the row from the item and the item from the row at
+   the same time. It resolved that here by squeezing the rows: thirty previews
+   stacked on top of one another inside 1193px of content where 2000px was
+   needed.
+
+   He found it by using it, and could see it. This session cannot, so it is a
+   measurement instead -- WALLSCAN_SELFTEST=layout reported 26 of 30 cards
+   overlapping the one below them before this changed (2026-08-22).
+
+   A percentage padding resolves against the containing block's *width* alone,
+   so there is no circularity left for the grid to resolve the wrong way. */
+.card {
+  position: relative;
+  height: 0;
+  padding-top: 56.25%;                     /* 9 / 16 */
+  border-radius: var(--radius-in);
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  overflow: hidden;
+  cursor: pointer;
+  animation: land var(--anim) var(--ease);
+}
+@keyframes land { from { opacity: 0; transform: translateY(6px); } }
+
+/* Absolute, because the card's own content box is zero-height by the rule
+   above. Positioned children resolve against the padding box, which is the
+   16:9 rectangle the padding just drew. */
+.card img {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card.on { border-color: var(--accent-hi); }
+.card.on::after {
+  content: "";
+  position: absolute; inset: 0;
+  border: 2px solid var(--accent-hi);
+  border-radius: var(--radius-in);
+  pointer-events: none;
+}
+
+/* The tick box, top right of each preview, as drawn. */
+.tick {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border: 1px solid rgba(234,240,237,0.55);
+  border-radius: 8px;
+  background: rgba(12,23,18,0.62);
+  color: transparent;
+}
+.card.on .tick {
+  background: var(--accent);
+  border-color: var(--accent-hi);
+  color: var(--text);
+}
+.tick svg { width: 15px; height: 15px; }
+
+/* The resolution, on the picture. He asked for it on every preview: it is
+   the one fact that decides whether a wallpaper is usable here at all. */
+.res {
+  position: absolute;
+  left: 8px; bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(12,23,18,0.74);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.src {
+  position: absolute;
+  right: 8px; bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(12,23,18,0.74);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+/* Already in the library. Dimmed rather than hidden, so it is visible that
+   the record is working instead of results silently going missing. */
+.card.have { opacity: 0.42; }
+.card.have .res::after { content: " · already have"; color: var(--accent-hi); }
+
+/* ---------------- the discard question ---------------- */
+
+#confirm {
+  position: absolute; inset: 0;
+  background: rgba(6,12,9,0.72);
+  display: grid; place-items: center;
+  z-index: 40;
+}
+#confirm[hidden] { display: none; }
+
+#confirmpanel {
+  min-width: 0;
+  max-width: 320px;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  text-align: center;
+}
+#confirmtext { font-size: 13.5px; line-height: 1.4; margin-bottom: 14px; }
+
+/* ---------------- the resize grips ---------------- */
+
+/* Eight strips round the edge, invisible, sitting above everything so a drag
+   that starts on them resizes rather than moves. */
+.grip { position: fixed; z-index: 60; }
+.grip.n  { top: 0; left: 8px; right: 8px; height: 7px; cursor: n-resize; }
+.grip.s  { bottom: 0; left: 8px; right: 8px; height: 7px; cursor: s-resize; }
+.grip.w  { left: 0; top: 8px; bottom: 8px; width: 7px; cursor: w-resize; }
+.grip.e  { right: 0; top: 8px; bottom: 8px; width: 7px; cursor: e-resize; }
+.grip.nw { top: 0; left: 0; width: 14px; height: 14px; cursor: nw-resize; }
+.grip.ne { top: 0; right: 0; width: 14px; height: 14px; cursor: ne-resize; }
+.grip.sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: sw-resize; }
+.grip.se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: se-resize; }
+
+/* Scrollbar, in the palette. The default is a light GTK one in a dark window. */
+::-webkit-scrollbar { width: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--edge);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: content-box; }

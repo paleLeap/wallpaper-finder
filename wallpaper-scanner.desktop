@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Wallpaper Scanner
+GenericName=Wallpaper finder
+Comment=Search several sources for new 4K wallpapers and keep the ones you pick
+Exec=/path/to/wallpaper-finder/launch.sh
+Icon=preferences-desktop-wallpaper
+Terminal=false
+Categories=Graphics;Utility;
+StartupNotify=false
