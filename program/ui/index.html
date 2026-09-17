@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Wallpaper Finder</title>
+<link rel="stylesheet" href="scanner.css">
+
+<!-- wallpaper-scanner. Three stages in one window.
+
+     There is no titlebar, so the window's own furniture is drawn here: the
+     drag surface is the whole panel, the resize grips are the eight strips
+     round the edge, and every button that a titlebar would own is in the top
+     strip of whichever stage is showing.
+
+     No `title` attributes anywhere. WebKit turns one into a black GTK tooltip
+     in the system font that no stylesheet here can reach. `aria-label` names
+     a control and draws nothing.
+     (door/01-ui-ux/webkit-title-tooltips.md, 2026-08-20) -->
+
+<div id="frame" data-stage="bar">
+
+  <!-- ============ stage one: what to search ============ -->
+  <section id="bar" class="stage">
+
+    <!-- A strip of its own rather than a square floating in the corner: the
+         floating one sat on top of the Search button and could not be pressed.
+         Also the window's drag handle, since there is no titlebar. -->
+    <div id="bartop">
+      <!-- The same button as the three beside it, and deliberately so: same
+           size, same border, same hover. It opens a short account of what
+           this program does, for whoever opened it without knowing. -->
+      <button class="wbtn" id="barhelp" aria-label="What this program does">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9.2 9a2.9 2.9 0 1 1 3.8 2.8c-.8.3-1.3 1-1.3 1.9v.6"/>
+          <path d="M12 17.6h.01"/>
+        </svg>
+      </button>
+      <button class="wbtn" id="barmin" aria-label="Minimize">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round"><path d="M6 12h12"/></svg>
+      </button>
+      <button class="wbtn" id="barmax" aria-label="Maximize">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      </button>
+      <button class="wbtn" id="barclose" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+      </button>
+    </div>
+
+    <div class="barrow">
+      <!-- Only sources this program can actually search are listed, and each
+           says what it is and what it needs. A source that could not be made
+           to work without editing scanner.py is not shown at all, greyed out
+           or otherwise -- see the note above SOURCES in scanner.py. -->
+      <div class="pane" id="sourcepane">
+        <h2>Sources</h2>
+        <div class="list col" id="sourcelist"></div>
+      </div>
+
+      <div class="pane" id="themepane">
+        <h2>Themes</h2>
+        <!-- Anything typed here joins the ticked pills in the same search
+             string, so it reaches every source at once. No placeholder: he
+             said it does not need to say "Search", and a grey word sitting in
+             an empty box is a thing to read rather than a thing to use.
+             aria-label names it without drawing a WebKit tooltip. -->
+        <input id="themesearch" type="text" spellcheck="false"
+               autocomplete="off" autocorrect="off"
+               aria-label="Extra words to search for">
+        <div class="list" id="themelist"></div>
+      </div>
+
+      <div class="endcol">
+        <button id="searchbtn" class="go">Search</button>
+        <!-- The counterpart to the record. It carries its own count so what is
+             about to be thrown away is visible before it is. -->
+        <button id="forgetbtn" class="flat">Forget what I've seen</button>
+      </div>
+    </div>
+
+    <!-- A strip of its own under the panes rather than two more columns: the
+         themes list is the one that grows now it comes from the sites, and a
+         column taken out of the row above would have shrunk it.
+
+         Both are dropdowns, and both are built by the host: wallhaven only
+         accepts its own fixed swatches and answers a total of 0 to anything
+         else (measured 2026-08-26), and the sizes are the same list the
+         search floor is read from, so neither can drift from what the host
+         will honour.
+
+         They open upward. This strip is at the bottom of the window, and a
+         menu opening down would be drawn outside it. -->
+    <div class="pane" id="choicepane">
+      <div class="choice">
+        <h2>Minimum size</h2>
+        <div class="drop" id="sizedrop">
+          <button class="dropbtn" id="sizebtn" aria-label="Minimum size">
+            <span class="droplabel" id="sizelabel">3840 × 2160 · 4K</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14l5-5 5 5"/></svg>
+          </button>
+          <div class="dropmenu" id="sizemenu" hidden></div>
+        </div>
+      </div>
+
+      <div class="choice">
+        <h2>Main colour</h2>
+        <div class="drop" id="colourdrop">
+          <button class="dropbtn" id="colourbtn" aria-label="Main colour">
+            <span class="dot" id="colourdot" data-any="1"></span>
+            <span class="droplabel" id="colourlabel">Any colour</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14l5-5 5 5"/></svg>
+          </button>
+          <div class="dropmenu" id="colourmenu" hidden></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ stage two: how many ============ -->
+  <section id="ask" class="stage">
+    <h1>How many?</h1>
+    <input id="howmany" type="text" inputmode="numeric" value="10" spellcheck="false"
+           aria-label="How many wallpapers to look for">
+    <p class="hint">No limit. Stop it whenever you like.</p>
+    <div class="askrow">
+      <button id="askcancel" class="flat">Back</button>
+      <button id="askgo" class="go">Confirm</button>
+    </div>
+  </section>
+
+  <!-- ============ stage three: the results ============ -->
+  <section id="grid" class="stage">
+
+    <div id="strip">
+      <div id="status">Nothing yet</div>
+
+      <button class="rollbtn" id="rollbtn" aria-label="Roll up">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+             stroke-linecap="round"><path d="M5 12h14"/></svg>
+      </button>
+
+      <div id="stripright">
+        <button id="submitbtn" class="go small" hidden>Submit selections</button>
+        <button id="stopbtn" class="stop">Stop</button>
+        <button class="xbtn inline" id="gridclose" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+               stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- The only scrolling region. Four across, and it fills as previews
+         arrive rather than all at once. -->
+    <div id="results"></div>
+  </section>
+
+  <!-- What the X in the results window opens. Closing throws the previews
+       away, so it is asked about rather than done. -->
+  <!-- Asked on every save, because where these go is the one thing this
+       program does outside its own folder. The folder is remembered, so the
+       usual answer is to press Save; the chooser is there for when it is not. -->
+  <div id="savepanel" hidden>
+    <div id="savebox">
+      <p id="savetext">Save 0 wallpapers to:</p>
+      <button id="savedirbtn" class="pathbtn" aria-label="Choose a folder">
+        <span id="savedirlabel">~/Pictures/wallpapers</span>
+      </button>
+      <p class="hint">The folder is made if it isn't there. Files already in
+        it are never overwritten.</p>
+      <div class="askrow">
+        <button id="savecancel" class="flat">Cancel</button>
+        <button id="saveconfirm" class="go small">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- What "Specific size…" opens. Two numbers and nothing else: a banner is
+       a size somebody already knows, not one to be browsed for. -->
+  <div id="sizepanel" hidden>
+    <div id="sizebox">
+      <h1>Specific size</h1>
+      <div id="sizefields">
+        <input id="exactw" type="text" inputmode="numeric" value="3440"
+               spellcheck="false" autocomplete="off" aria-label="Width in pixels">
+        <span class="by">×</span>
+        <input id="exacth" type="text" inputmode="numeric" value="1440"
+               spellcheck="false" autocomplete="off" aria-label="Height in pixels">
+      </div>
+      <p class="hint">Exactly this size, not "this or bigger" — which is what
+        a banner needs. wallhaven has 90,858 at 1920×1080 and 2,230 at
+        3440×1440; a size nobody uploads returns nothing at all. Commons and
+        Pexels have no such search and will rarely match.</p>
+      <div class="askrow">
+        <button id="sizecancel" class="flat">Back</button>
+        <button id="sizeok" class="go small">Use this size</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- What the ? opens. Short on purpose: it is the answer to "what is this",
+       not a manual. -->
+  <div id="help" hidden>
+    <div id="helpbox">
+      <h1>Wallpaper Finder</h1>
+      <p>It searches several wallpaper sites at once and shows you small,
+        cheap previews — a preview costs about 20 KB against 4 MB for the real
+        thing, so you can look at a hundred for the price of one.</p>
+      <p>Pick your sources and themes, set a minimum size and a main colour if
+        you want them, and say how many to find. Tick the ones you like and
+        press <b>Submit selections</b>: only those are downloaded at full size,
+        into a folder it asks you about.</p>
+      <p>It remembers everything it has shown you, so it stops repeating
+        itself, and it skips anything already in your folder. It saves
+        wallpapers — it does not set them.</p>
+      <div class="askrow">
+        <button id="helpclose" class="go small">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirm" hidden>
+    <div id="confirmpanel">
+      <p id="confirmtext">Stop search and delete thumbnails?</p>
+      <div class="askrow">
+        <button id="confirmno" class="flat">No</button>
+        <button id="confirmyes" class="heavy">Yes</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="grip n"  data-edge="n"></div>
+<div class="grip s"  data-edge="s"></div>
+<div class="grip w"  data-edge="w"></div>
+<div class="grip e"  data-edge="e"></div>
+<div class="grip nw" data-edge="nw"></div>
+<div class="grip ne" data-edge="ne"></div>
+<div class="grip sw" data-edge="sw"></div>
+<div class="grip se" data-edge="se"></div>
+
+<script src="scanner.js"></script>

@@ -212,71 +212,184 @@ html, body {
 }
 #themesearch:focus { border-color: var(--accent-hi); }
 
-/* ---- the main colour, in a strip under both panes ---- */
+/* ---- a source, and what it needs ---- */
 
-#colourpane {
-  flex: 0 0 auto;           /* the panes above take the stretch, not this */
-  padding: 8px 12px 10px;
+/* The sources list runs down rather than across. There are four of them, each
+   carrying two lines of explanation, and a wrapped row of those is a wall.
+   `.list` stays as it is for the themes, which are still pills. */
+.list.col {
+  flex-wrap: nowrap;
+  flex-direction: column;
+  gap: 7px;
 }
-#colourpane h2 { margin-bottom: 7px; }
 
-#colourlist {
+/* A source is a card that can be on or off, not a pill: it has to hold a name,
+   what it is, and what it needs before it will work. The tick is drawn on the
+   left so the three lines of text share one edge. */
+.source {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
-}
-
-/* One swatch. Rounded like everything else here -- arbor's rule holds for a
-   30px square as much as for the window. The colour itself is set by the
-   host, because wallhaven decides what the colours are. */
-.swatch {
-  /* 28 and not 30, and a 5px gap and not 6: thirty swatches plus the "Any
-     colour" pill come to 1087px inside a 1126px pane, so the row fits on one
-     line at the width the window opens at. At 30px they wrapped, and the
-     wrapped pair was clipped by the pane -- seen on screen 2026-08-26, not
-     reasoned about. */
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
+  gap: 9px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 8px 10px;
   border: 1px solid var(--edge);
-  border-radius: 9px;
-  padding: 0;
-  cursor: pointer;
-  transition: transform var(--anim) var(--ease),
-              box-shadow var(--anim) var(--ease),
-              border-color var(--anim) var(--ease);
-}
-.swatch:hover { border-color: var(--accent-hi); transform: translateY(-1px); }
-
-/* The chosen one. A ring rather than a tick: a tick drawn on the swatch has
-   to be either light or dark, and this palette runs from #000000 to #ffffff,
-   so either one disappears on some of them. The ring sits outside the colour
-   and is legible against all thirty. */
-.swatch.on {
-  border-color: var(--text);
-  box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--accent-hi);
-}
-
-/* "Any colour" -- the way back out, and where this starts. A pill rather than
-   a swatch, because it is the absence of a colour and there is no square that
-   says that. */
-.swatch.any {
-  width: auto;
-  height: 28px;
-  padding: 0 13px;
+  border-radius: var(--radius-in);
   background: transparent;
   color: var(--text-dim);
   font: inherit;
-  font-size: 12.5px;
-  border-radius: 15px;
+  cursor: pointer;
+  transition: background var(--anim) var(--ease),
+              border-color var(--anim) var(--ease);
 }
-.swatch.any.on {
+.source:hover { border-color: var(--accent); }
+.source.on {
   background: var(--accent);
-  color: var(--text);
-  box-shadow: none;
   border-color: var(--accent-hi);
+  color: var(--text);
 }
+
+/* The box that says on or off. A box rather than the whole card changing
+   colour alone, because "needs a key" cards are dimmed and a dim card that is
+   also unticked would be telling two things with one signal. */
+.source .box {
+  flex: 0 0 auto;
+  width: 16px; height: 16px;
+  margin-top: 2px;
+  border: 1.5px solid currentColor;
+  border-radius: 5px;
+  display: grid; place-items: center;
+}
+.source .box svg { width: 11px; height: 11px; opacity: 0; }
+.source.on .box svg { opacity: 1; }
+
+.source .body { min-width: 0; }
+.source .name {
+  font-size: 13.5px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.source .what { font-size: 11.5px; line-height: 1.35; }
+/* What it needs, on its own line and in the accent rather than in italics:
+   this is the line that decides whether a friend can use the source at all,
+   and it should not read as a footnote. */
+.source .needs {
+  font-size: 11.5px;
+  line-height: 1.35;
+  margin-top: 3px;
+  color: var(--accent-hi);
+}
+.source.on .needs { color: var(--text); opacity: 0.85; }
+
+.source[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.source[disabled]:hover { border-color: var(--edge); }
+
+/* ---- the two dropdowns, in a strip under both panes ---- */
+
+#choicepane {
+  flex: 0 0 auto;           /* the panes above take the stretch, not this */
+  padding: 8px 12px 10px;
+  flex-direction: row;
+  gap: var(--pad);
+  overflow: visible;        /* the menus open out of this box */
+}
+#choicepane h2 { margin-bottom: 7px; }
+.choice { flex: 1; min-width: 0; }
+
+.drop { position: relative; }
+
+/* The closed dropdown. Sized and rounded like the search box above it, so the
+   bar reads as one set of controls rather than three borrowed ones. */
+.dropbtn {
+  width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  border: 1px solid var(--edge);
+  border-radius: 17px;
+  background: var(--ground);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--anim) var(--ease);
+}
+.dropbtn:hover { border-color: var(--accent); }
+.drop.open .dropbtn { border-color: var(--accent-hi); }
+.droplabel {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chev {
+  flex: 0 0 auto;
+  width: 14px; height: 14px;
+  color: var(--text-dim);
+  transform: rotate(180deg);
+  transition: transform var(--anim) var(--ease);
+}
+.drop.open .chev { transform: rotate(0deg); }
+
+/* The colour currently chosen, shown on the closed button. "Any" has no
+   colour to show, so it is drawn as an outline rather than a filled dot --
+   an empty square would read as black, which is one of the choices. */
+.dot {
+  flex: 0 0 auto;
+  width: 16px; height: 16px;
+  border-radius: 6px;
+  border: 1px solid var(--edge);
+}
+.dot[data-any="1"] {
+  background: transparent !important;
+  border-style: dashed;
+  border-color: var(--text-dim);
+}
+
+/* Open upward. This strip sits at the bottom of the window and a menu opening
+   downward would be drawn outside it -- which, in a window with no titlebar
+   and its own shape, means not drawn at all. */
+.dropmenu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 232px;
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-in);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.45);
+}
+.dropmenu[hidden] { display: none; }
+
+.opt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.opt:hover { background: var(--ground); color: var(--text); }
+.opt.on { background: var(--accent); color: var(--text); }
 
 /* The right-hand end of the bar: Search taking the height, and the forget
    button tucked under it. A column rather than a third pane -- these two are
@@ -576,6 +689,116 @@ html, body {
    the record is working instead of results silently going missing. */
 .card.have { opacity: 0.42; }
 .card.have .res::after { content: " · already have"; color: var(--accent-hi); }
+
+/* ---------------- the save folder, and the help ---------------- */
+
+/* Both share the discard question's shape: a dimmed window with one panel in
+   the middle of it. Three overlays that looked like three different programs
+   would be worse than one repeated idea. */
+#savepanel, #help {
+  position: absolute; inset: 0;
+  background: rgba(6,12,9,0.72);
+  display: grid; place-items: center;
+  z-index: 45;
+  padding: 20px;
+}
+#savepanel[hidden], #help[hidden] { display: none; }
+
+#savebox, #helpbox {
+  max-width: 460px;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+}
+
+#savetext { font-size: 13.5px; margin-bottom: 10px; }
+
+/* The folder, drawn as the button that changes it. A path with a separate
+   "Change" button beside it makes the path look like a label; this way the
+   thing you press is the thing you are changing. */
+.pathbtn {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px dashed var(--edge);
+  border-radius: var(--radius-in);
+  background: var(--ground);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  word-break: break-all;
+  transition: border-color var(--anim) var(--ease), color var(--anim) var(--ease);
+}
+.pathbtn:hover { border-color: var(--accent-hi); }
+.pathbtn::after {
+  content: " — click to change";
+  color: var(--text-dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+#savepanel .hint { margin: 9px 0 14px; }
+#savepanel .askrow, #help .askrow { justify-content: flex-end; }
+
+#helpbox h1 { font-size: 17px; margin-bottom: 10px; }
+#helpbox p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  margin-bottom: 9px;
+}
+#helpbox b { color: var(--text); font-weight: 600; }
+#helpbox .askrow { margin-top: 14px; }
+
+/* The specific-size panel shares the same overlay shape as the rest. */
+#sizepanel {
+  position: absolute; inset: 0;
+  background: rgba(6,12,9,0.72);
+  display: grid; place-items: center;
+  z-index: 46;
+  padding: 20px;
+}
+#sizepanel[hidden] { display: none; }
+
+#sizebox {
+  max-width: 420px;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+}
+#sizebox h1 { font-size: 16px; margin-bottom: 12px; }
+
+#sizefields {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#sizefields input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 15px;
+  text-align: center;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-in);
+  outline: none;
+  -webkit-user-select: text;
+  cursor: text;
+  transition: border-color var(--anim) var(--ease);
+}
+#sizefields input:focus { border-color: var(--accent-hi); }
+#sizefields .by { color: var(--text-dim); font-size: 15px; }
+
+#sizepanel .hint { margin: 10px 0 14px; }
+#sizepanel .askrow { justify-content: flex-end; }
 
 /* ---------------- the discard question ---------------- */
 

@@ -53,13 +53,22 @@ const picked = new Set();
  * A threshold rather than an exact match: scroll positions land on fractional
  * pixels at this DPI, and `scrollTop === scrollHeight - clientHeight` is a
  * test that fails at rest. */
-let following = true;
 const NEAR_BOTTOM = 48;
 
-results.addEventListener('scroll', () => {
-  const gap = results.scrollHeight - results.scrollTop - results.clientHeight;
-  following = gap <= NEAR_BOTTOM;
-});
+/* Whether the grid is currently pinned to its bottom, measured now rather
+ * than remembered.
+ *
+ * It used to be a flag kept up to date by the scroll handler, and that flag
+ * could be a frame out of date at exactly the wrong moment. A scroll event
+ * does not fire the instant scrollTop is assigned -- it arrives before the
+ * next paint -- so a preview landing in that gap read the stale flag, scrolled
+ * the grid back to the bottom, and the scroll handler then agreed with the
+ * position it had just been moved to. The effect was a grid that would not let
+ * go when you scrolled up: seen about one run in three in the layout check,
+ * which is what the check is for. Asking the element where it is cannot go
+ * stale. */
+const atBottom = () =>
+  results.scrollHeight - results.scrollTop - results.clientHeight <= NEAR_BOTTOM;
 
 /* ---------- moving and resizing the window ---------- */
 
@@ -89,20 +98,60 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 /* Built from what the host hands over rather than written into the markup:
  * phase two replaces the theme list with one pulled from each site's own
  * settings, and that must not mean editing the page. */
+const TICK =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"' +
+  ' stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+
+/* A source card: the name, what it is, and what it needs before it will work.
+ *
+ * The host decides what is on this list. Anything that could not be made to
+ * work without editing scanner.py is not sent here at all -- not greyed out,
+ * not explained, absent -- so nothing on this panel is a dead end. A card that
+ * is merely waiting for a key still arrives, because a key is something a
+ * person can go and get. */
 window.scanner_setSources = (list) => {
   const box = document.getElementById('sourcelist');
   box.innerHTML = '';
   list.forEach((s) => {
     const b = document.createElement('button');
-    b.className = 'pick' + (s.ready ? ' on' : '');
+    b.className = 'source' + (s.ready ? ' on' : '');
     b.dataset.id = s.id;
-    b.textContent = s.name;
+
+    const box_ = document.createElement('span');
+    box_.className = 'box';
+    box_.innerHTML = TICK;
+
+    const body = document.createElement('span');
+    body.className = 'body';
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = s.name;
+    body.appendChild(name);
+
+    if (s.what) {
+      const what = document.createElement('span');
+      what.className = 'what';
+      what.textContent = s.what;
+      body.appendChild(document.createElement('br'));
+      body.appendChild(what);
+    }
+
+    /* What it needs, always said -- "Nothing at all" is the most useful thing
+     * a source can say and it used to say nothing at all instead. */
+    if (s.needs) {
+      const needs = document.createElement('span');
+      needs.className = 'needs';
+      needs.textContent = s.ready ? s.needs : '⚠ ' + s.needs;
+      body.appendChild(document.createElement('br'));
+      body.appendChild(needs);
+    }
+
+    b.appendChild(box_);
+    b.appendChild(body);
+
     if (!s.ready) {
       b.disabled = true;
-      const why = document.createElement('span');
-      why.className = 'why';
-      why.textContent = s.why || 'not available';
-      b.appendChild(why);
     } else {
       b.addEventListener('click', () => {
         b.classList.toggle('on');
@@ -128,62 +177,191 @@ window.scanner_setThemes = (list) => {
   });
 };
 
-/* One colour at a time, not several. He described this as picking THE main
- * colour -- "if he wants something white, he picks white" -- and two main
- * colours is not a thing a picture has. Choosing one therefore clears the
- * rest rather than adding to them, and pressing the chosen one again turns it
- * off, so there is always a way back to no colour without hunting for "Any". */
-window.scanner_setColours = (list) => {
-  const box = document.getElementById('colourlist');
-  box.innerHTML = '';
+/* ---------- the two dropdowns ---------- */
 
-  const any = document.createElement('button');
-  any.className = 'swatch any on';
-  any.dataset.hex = '';
-  any.textContent = 'Any colour';
-  any.setAttribute('aria-label', 'Any colour');
-  box.appendChild(any);
+/* One dropdown, built twice: once for the sizes and once for the colours.
+ *
+ * Not a <select>. A native one draws its open list with the operating
+ * system's own widget -- a light list in a dark window on Linux, and nothing
+ * this stylesheet can reach on either system. That is the same reason this
+ * program refuses the browser's context menu and never uses a `title`
+ * attribute: a control that cannot be styled cannot be made to match.
+ *
+ * Closing on any click elsewhere is handled once, at the bottom, rather than
+ * per menu. */
+const makeDrop = (dropId, menuId, options, chosenId, onPick) => {
+  const drop = document.getElementById(dropId);
+  const menu = document.getElementById(menuId);
+  menu.innerHTML = '';
 
-  const clear = () =>
-    [...box.querySelectorAll('.swatch')].forEach((s) => s.classList.remove('on'));
+  const close = () => { drop.classList.remove('open'); menu.hidden = true; };
 
-  any.addEventListener('click', () => {
-    clear();
-    any.classList.add('on');
-    note('colour cleared');
-  });
-
-  list.forEach((c) => {
+  options.forEach((o) => {
     const b = document.createElement('button');
-    b.className = 'swatch';
-    b.dataset.hex = c.hex;
-    b.style.background = c.hex;
-    /* aria-label, never title: WebKit turns a title into a black GTK tooltip
-     * that no stylesheet here can reach. */
-    b.setAttribute('aria-label', c.name);
+    b.className = 'opt' + (o.id === chosenId ? ' on' : '');
+    b.dataset.id = o.id;
+    if (o.hex !== undefined) {
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      if (o.hex) dot.style.background = o.hex;
+      else dot.dataset.any = '1';
+      b.appendChild(dot);
+    }
+    const label = document.createElement('span');
+    label.textContent = o.name;
+    b.appendChild(label);
     b.addEventListener('click', () => {
-      const was = b.classList.contains('on');
-      clear();
-      if (was) {
-        any.classList.add('on');
-        note('colour cleared');
-      } else {
-        b.classList.add('on');
-        note('colour ' + c.name + ' (' + c.hex + ')');
-      }
+      [...menu.querySelectorAll('.opt')].forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      close();
+      onPick(o);
     });
-    box.appendChild(b);
+    menu.appendChild(b);
+  });
+
+  const button = drop.querySelector('.dropbtn');
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opening = menu.hidden;
+    closeAllDrops();
+    if (opening) {
+      drop.classList.add('open');
+      menu.hidden = false;
+      const on = menu.querySelector('.opt.on');
+      if (on) on.scrollIntoView({ block: 'nearest' });
+    }
   });
 };
 
-const chosenColour = () => {
-  const on = document.querySelector('#colourlist .swatch.on');
-  return (on && on.dataset.hex) || '';
+const closeAllDrops = () => {
+  [...document.querySelectorAll('.drop')].forEach((d) => {
+    d.classList.remove('open');
+    const m = d.querySelector('.dropmenu');
+    if (m) m.hidden = true;
+  });
 };
 
+document.addEventListener('click', closeAllDrops);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeAllDrops();
+});
+
+/* ---- the minimum size ---- */
+
+let chosenSize = '';
+/* Only meaningful while chosenSize is 'exact'. Kept out here so that going
+ * away to another size and coming back does not lose what was typed. */
+let exactW = 3440;
+let exactH = 1440;
+
+const sizePanel = document.getElementById('sizepanel');
+const exactwBox = document.getElementById('exactw');
+const exacthBox = document.getElementById('exacth');
+
+/* Digits only, the same rule as the how-many box. */
+[exactwBox, exacthBox].forEach((box) => {
+  box.addEventListener('input', () => {
+    const cleaned = box.value.replace(/[^0-9]/g, '');
+    if (cleaned !== box.value) box.value = cleaned;
+  });
+});
+
+window.scanner_setSizes = (list, initial) => {
+  chosenSize = initial;
+  const label = document.getElementById('sizelabel');
+  const start = list.find((z) => z.id === initial) || list[0];
+  label.textContent = start.name;
+
+  /* What the label says once a specific size is in force. The host writes the
+   * same sentence its own way for the log; this one is for the button. */
+  const exactLabel = () => exactW + ' × ' + exactH + ' exactly';
+
+  const useExact = () => {
+    exactW = Math.max(1, parseInt(exactwBox.value, 10) || 1);
+    exactH = Math.max(1, parseInt(exacthBox.value, 10) || 1);
+    chosenSize = 'exact';
+    label.textContent = exactLabel();
+    sizePanel.hidden = true;
+    note('specific size ' + exactW + 'x' + exactH);
+  };
+
+  document.getElementById('sizeok').addEventListener('click', useExact);
+  [exactwBox, exacthBox].forEach((box) => {
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') useExact();
+      if (e.key === 'Escape') document.getElementById('sizecancel').click();
+    });
+  });
+
+  /* Backing out leaves the size as it was before the panel opened, rather
+   * than half-applying a number nobody confirmed. */
+  document.getElementById('sizecancel').addEventListener('click', () => {
+    sizePanel.hidden = true;
+    const back = list.find((z) => z.id === chosenSize);
+    label.textContent = chosenSize === 'exact' ? exactLabel()
+                      : (back ? back.name : start.name);
+    note('specific size cancelled, still ' + label.textContent);
+  });
+
+  makeDrop('sizedrop', 'sizemenu', list, initial, (o) => {
+    if (o.exact) {
+      /* The dropdown cannot answer this one -- it needs two numbers -- so it
+       * opens the panel that can, and nothing is chosen until that panel is
+       * confirmed. */
+      exactwBox.value = exactW;
+      exacthBox.value = exactH;
+      sizePanel.hidden = false;
+      exactwBox.focus();
+      exactwBox.select();
+      note('specific size asked for');
+      return;
+    }
+    chosenSize = o.id;
+    label.textContent = o.name;
+    note('minimum size ' + o.id);
+  });
+};
+
+/* ---- the main colour ----
+ *
+ * One colour at a time, not several. He described this as picking THE main
+ * colour -- "if he wants something white, he picks white" -- and two main
+ * colours is not a thing a picture has. "Any colour" is the first entry and
+ * the way back out, so there is always one without hunting for it. */
+
+let chosenColourHex = '';
+
+window.scanner_setColours = (list) => {
+  const dot = document.getElementById('colourdot');
+  const label = document.getElementById('colourlabel');
+  const options = [{ id: '', name: 'Any colour', hex: '' }].concat(
+    list.map((c) => ({ id: c.hex, name: c.name, hex: c.hex })));
+
+  makeDrop('colourdrop', 'colourmenu', options, '', (o) => {
+    chosenColourHex = o.hex;
+    label.textContent = o.name;
+    if (o.hex) {
+      dot.style.background = o.hex;
+      delete dot.dataset.any;
+      note('colour ' + o.name + ' (' + o.hex + ')');
+    } else {
+      dot.style.background = '';
+      dot.dataset.any = '1';
+      note('colour cleared');
+    }
+  });
+};
+
+const chosenColour = () => chosenColourHex;
+
+/* What is ticked in a list. Sources are cards and themes are pills, so both
+ * class names are asked for: reading only one of them is how this quietly
+ * sent a search with no sources at all the moment the source pills became
+ * cards. Caught by the self-test, which is what it is for. */
 const chosen = (selector) =>
-  [...document.querySelectorAll(selector + ' .pick.on')]
-    .map((b) => b.dataset.id || b.textContent.trim());
+  [...document.querySelectorAll(selector + ' .pick.on, ' + selector + ' .source.on')]
+    .map((b) => b.dataset.id ||
+                (b.querySelector('.name') || b).textContent.trim());
 
 document.getElementById('searchbtn').addEventListener('click', () => {
   const typed = document.getElementById('themesearch').value.trim();
@@ -195,7 +373,24 @@ document.getElementById('searchbtn').addEventListener('click', () => {
      * ticked theme reach every source together. */
     typed: typed,
     colour: chosenColour(),
+    size: chosenSize,
+    /* Only read by the host when size is 'exact'; sent always, because a
+     * payload whose shape changes with a setting is a payload to get wrong. */
+    width: exactW,
+    height: exactH,
   }));
+});
+
+/* The ? is one of the window's own buttons and behaves like them -- same
+ * size, same hover, same strip. What it opens is deliberately short. */
+const helpPanel = document.getElementById('help');
+document.getElementById('barhelp').addEventListener('click', () => {
+  helpPanel.hidden = false;
+  note('help opened');
+});
+document.getElementById('helpclose').addEventListener('click', () => {
+  helpPanel.hidden = true;
+  note('help closed');
 });
 
 document.getElementById('barclose').addEventListener('click', () => send('close'));
@@ -230,7 +425,8 @@ window.scanner_reset = (want) => {
   results.innerHTML = '';
   picked.clear();
   results.scrollTop = 0;
-  following = true;          /* a new search always starts by following */
+  /* A new search starts at the top of an empty grid, which is also its
+   * bottom, so following resumes by itself. */
   running = true;
   paint();
   status.textContent = 'starting — 0/' + want;
@@ -286,13 +482,16 @@ window.scanner_addResult = (r) => {
     paint();
   });
 
+  /* Measured before the card goes in: afterwards the content is taller and
+   * every grid looks scrolled-up. */
+  const wasAtBottom = atBottom();
   results.appendChild(card);
 
   /* Instant, not smooth: previews land in bursts, and queued smooth scrolls
    * fight each other and arrive late. Three appends in four move nothing
    * anyway -- the content only grows when a new row of four starts -- so this
    * reads as a steady creep rather than a jump. */
-  if (following) results.scrollTop = results.scrollHeight;
+  if (wasAtBottom) results.scrollTop = results.scrollHeight;
 };
 
 /* Submit is absent while the search runs, at his instruction -- not merely
@@ -314,10 +513,46 @@ window.scanner_setRolled = (on) => frame.classList.toggle('rolled', on);
 stopbtn.addEventListener('click', () => send('stopresume'));
 document.getElementById('rollbtn').addEventListener('click', () => send('rolltoggle'));
 
+/* Where the wallpapers go is asked on every save.
+ *
+ * It is the one thing this program does outside its own folder, so it is a
+ * question rather than an assumption -- and the answer is remembered by the
+ * host, which is what keeps the question cheap: the usual reply is to press
+ * Save. The path shown is the host's, never one this page made up. */
+const savePanel = document.getElementById('savepanel');
+const saveDirLabel = document.getElementById('savedirlabel');
+let saveDirPath = '';
+
+window.scanner_setSaveDir = (shown, full) => {
+  saveDirPath = full;
+  saveDirLabel.textContent = shown;
+};
+
 submitbtn.addEventListener('click', () => {
   if (running) { note('submit refused: still searching'); return; }
   if (!picked.size) { note('submit refused: nothing selected'); return; }
-  send('submit', JSON.stringify([...picked]));
+  document.getElementById('savetext').textContent =
+    'Save ' + picked.size + ' wallpaper' + (picked.size === 1 ? '' : 's') + ' to:';
+  savePanel.hidden = false;
+  note('save panel opened for ' + picked.size);
+});
+
+/* The chooser is the host's, because a folder chooser is the system's own job
+ * and every one written in a web page is worse than the one already there. */
+document.getElementById('savedirbtn').addEventListener('click', () => {
+  send('choosedir');
+  note('folder chooser asked for');
+});
+
+document.getElementById('savecancel').addEventListener('click', () => {
+  savePanel.hidden = true;
+  note('save cancelled, nothing downloaded');
+});
+
+document.getElementById('saveconfirm').addEventListener('click', () => {
+  savePanel.hidden = true;
+  send('submit', JSON.stringify({ picks: [...picked], dir: saveDirPath }));
+  note('save confirmed into ' + saveDirPath);
 });
 
 window.scanner_submitted = (n) => {
@@ -413,6 +648,10 @@ window.scanner_setStage = (stage) => {
   frame.dataset.stage = stage;
   frame.classList.remove('rolled');
   confirm.hidden = true;
+  savePanel.hidden = true;
+  helpPanel.hidden = true;
+  sizePanel.hidden = true;
+  closeAllDrops();
   if (stage === 'ask') {
     howmany.value = '10';        /* never remembered, at his instruction */
     howmany.focus();
@@ -463,7 +702,7 @@ if (SELFTEST === '1' || SELFTEST === 'live') {
   const fails_forget = [];
 
   (async () => {
-    await until('sources', () => document.querySelectorAll('#sourcelist .pick').length);
+    await until('sources', () => document.querySelectorAll('#sourcelist .source').length);
     note('selftest begins');
 
     /* The bug he reported: the close square floated in the corner and landed
@@ -487,9 +726,26 @@ if (SELFTEST === '1' || SELFTEST === 'live') {
          ' overlaps=' + fails_forget.length);
 
     /* Stage one. Turn one ready source off and back on, pick two themes. */
-    const sources = [...document.querySelectorAll('#sourcelist .pick:not([disabled])')];
-    press(sources[1], 'source off (' + sources[1].textContent + ')');
+    const sources = [...document.querySelectorAll('#sourcelist .source:not([disabled])')];
+    const sourceName = (el) => el.querySelector('.name').textContent;
+    press(sources[1], 'source off (' + sourceName(sources[1]) + ')');
     press(sources[1], 'source back on');
+    /* Every source says what it needs, including the ones that need nothing.
+     * A card with no such line is a card a friend has to guess at. */
+    const mute = [...document.querySelectorAll('#sourcelist .source')]
+      .filter((el) => !el.querySelector('.needs'));
+    if (mute.length) {
+      fails_forget.push(mute.length + ' source(s) do not say what they need');
+    }
+    /* Every source visible without scrolling. A panel that hides half its
+     * sources behind a scroll nobody expects is the same as not listing them,
+     * and that is exactly what happened when the pills became cards: two of
+     * four on screen at the height the window had always opened at. */
+    const slist = document.getElementById('sourcelist');
+    if (slist.scrollHeight > slist.clientHeight + 1) {
+      fails_forget.push('the sources do not fit: ' + slist.scrollHeight +
+                        ' inside ' + slist.clientHeight);
+    }
     const themes = [...document.querySelectorAll('#themelist .pick')];
     press(themes[0], 'theme ' + themes[0].textContent);
     press(themes[3], 'theme ' + themes[3].textContent);
@@ -507,19 +763,67 @@ if (SELFTEST === '1' || SELFTEST === 'live') {
       fails_forget.push('theme search bar overlaps the theme pills');
     }
 
-    const swatches = [...document.querySelectorAll('#colourlist .swatch')];
-    note('selftest sees ' + swatches.length + ' colour swatches');
-    /* Wrapping onto a clipped second row is the defect this checks for; it
-     * happened once, at 30px swatches, and was fixed to 28. */
-    const pane = document.getElementById('colourpane');
+    /* The ? -- one of the window's own buttons, so it is pressed like the
+     * rest rather than taken on trust. */
+    press(document.getElementById('barhelp'), 'the ? button');
+    if (document.getElementById('help').hidden) {
+      fails_forget.push('the ? did not open the help panel');
+    }
+    press(document.getElementById('helpclose'), 'CLOSE on the help panel');
+
+    /* Both dropdowns. Opened, counted, chosen from -- a menu that opens and a
+     * menu that answers are different things, and only the second one is
+     * worth anything. */
+    const pane = document.getElementById('choicepane');
     if (pane.scrollHeight > pane.clientHeight + 1) {
-      fails_forget.push('colour row is clipped: ' + pane.scrollHeight +
+      fails_forget.push('the size/colour strip is clipped: ' + pane.scrollHeight +
                         ' inside ' + pane.clientHeight);
     }
-    const black = swatches.find((s) => s.dataset.hex === '#000000');
+
+    press(document.getElementById('sizebtn'), 'the size dropdown open');
+    const sizes = [...document.querySelectorAll('#sizemenu .opt')];
+    note('selftest sees ' + sizes.length + ' sizes');
+    if (document.getElementById('sizemenu').hidden) {
+      fails_forget.push('the size dropdown did not open');
+    }
+    /* Opening upward is the whole reason these menus are hand-built: this
+     * strip is at the bottom of the window, and a menu drawn below it would
+     * be drawn outside the window. */
+    const smenu = document.getElementById('sizemenu').getBoundingClientRect();
+    const sbtn = document.getElementById('sizebtn').getBoundingClientRect();
+    if (smenu.top >= sbtn.top) {
+      fails_forget.push('the size menu opens downward, out of the window');
+    }
+    /* The specific size, opened and used, then put back to a floor so the
+     * rest of the run searches the way it always has. A banner size left in
+     * force would make every later assertion about results a test of
+     * 1920x480 rather than of the program. */
+    press(sizes.find((o) => o.dataset.id === 'exact'), 'Specific size…');
+    if (document.getElementById('sizepanel').hidden) {
+      fails_forget.push('Specific size did not open its panel');
+    }
+    document.getElementById('exactw').value = '3440';
+    document.getElementById('exactw').dispatchEvent(new Event('input'));
+    document.getElementById('exacth').value = '1440';
+    document.getElementById('exacth').dispatchEvent(new Event('input'));
+    press(document.getElementById('sizeok'), 'USE THIS SIZE 3440x1440');
+    note('selftest sees the size button reading "' +
+         document.getElementById('sizelabel').textContent + '"');
+
+    press(document.getElementById('sizebtn'), 'the size dropdown open again');
+    const hd = [...document.querySelectorAll('#sizemenu .opt')]
+      .find((o) => o.dataset.id === '1920x1080');
+    press(hd, 'minimum size 1920x1080');
+
+    press(document.getElementById('colourbtn'), 'the colour dropdown open');
+    const swatches = [...document.querySelectorAll('#colourmenu .opt')];
+    note('selftest sees ' + swatches.length + ' colours');
+    const black = swatches.find((o) => o.dataset.id === '#000000');
     press(black, 'colour Black');
-    press(black, 'colour Black again (should clear)');
-    press(black, 'colour Black once more');
+    press(document.getElementById('colourbtn'), 'the colour dropdown open again');
+    press(swatches.find((o) => o.dataset.id === ''), 'colour Any (should clear)');
+    press(document.getElementById('colourbtn'), 'the colour dropdown once more');
+    press(black, 'colour Black again');
 
     press(document.getElementById('searchbtn'), 'SEARCH');
     await until('the how-many stage', () => frame.dataset.stage === 'ask');
@@ -563,6 +867,18 @@ if (SELFTEST === '1' || SELFTEST === 'live') {
          ', submit hidden=' + submitbtn.hidden);
 
     press(submitbtn, 'SUBMIT SELECTIONS');
+    /* Which now asks where to put them rather than saving straight away. */
+    if (document.getElementById('savepanel').hidden) {
+      fails_forget.push('submit did not ask where to save');
+    }
+    note('selftest sees the save panel offering ' +
+         document.getElementById('savedirlabel').textContent);
+    /* The folder chooser itself is NOT pressed. It opens the system's own
+     * modal dialog, which nothing in this page can close again -- a self-test
+     * that opens it would hang there until someone came and clicked it. That
+     * it is wired at all is proved by the line the host writes when it opens;
+     * a person has to be the one to prove the rest. */
+    press(document.getElementById('saveconfirm'), 'SAVE into the shown folder');
     /* Wait for the download rather than a fixed delay: a full-size wallpaper
      * is several megabytes and the window used to close out from under it. */
     await until('the save to finish', () => window.__lastSave, 900);

@@ -4,11 +4,14 @@
 # No arguments. Output goes to the terminal, because this program's stdout is
 # the only instrument for what its page did.
 #
-# A virtual environment beside this file is used if there is one, so that
-# `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` is
-# enough of an install and nothing has to be put on the system Python.
+# The program itself lives in `program/`, and so does everything it needs --
+# this folder holds what you run and what explains it, and nothing else.
+#
+# A virtual environment in `program/.venv` is used if there is one, so that
+# `python3 -m venv program/.venv` and a pip install is enough of a setup and
+# nothing has to be put on the system Python.
 set -euo pipefail
-cd "$(dirname "$(readlink -f "$0")")"
+cd "$(dirname "$(readlink -f "$0")")/program"
 if [ -x .venv/bin/python ]; then
   exec .venv/bin/python scanner.py "$@"
 fi

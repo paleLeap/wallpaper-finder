@@ -1,11 +1,12 @@
 # Everything the program writes stays in its own folder -- and none of it
 # belongs in the repo, except the harvested theme list.
-cache/*
-!cache/themes.json
-__pycache__/
-contact.txt
-keys.txt
-offered.txt
+program/cache/*
+!program/cache/themes.json
+program/__pycache__/
+program/contact.txt
+program/keys.txt
+program/offered.txt
+program/savedir.txt
 
 # A virtual environment beside the program, if you make one there.
-.venv
+program/.venv

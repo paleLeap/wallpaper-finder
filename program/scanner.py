@@ -70,7 +70,7 @@ from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEngineScript,
                                      QWebEngineSettings)
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow
 
 PRGNAME = "pale-wallscan"
 
@@ -106,6 +106,56 @@ OFFERED = os.environ.get("WALLSCAN_OFFERED") or os.path.join(
 LIBRARY = os.environ.get("WALLSCAN_LIBRARY") or os.path.expanduser(
     "~/Pictures/wallpapers")
 
+# Where the last save went, so the folder only has to be chosen once.
+#
+# Beside the program rather than in a config directory, because everything
+# this program writes stays in its own folder -- and a friend who wants to
+# start again deletes one file they can see rather than hunting through
+# ~/.config or AppData. One line, a path, nothing else.
+SAVEDIR_FILE = os.environ.get("WALLSCAN_SAVEDIR_FILE") or os.path.join(
+    HERE, "savedir.txt")
+
+
+def pretty_path(path):
+    """A path short enough to read on a button.
+
+    The home folder becomes ~ on Linux, where that is the ordinary way to
+    write it. On Windows it is left alone: nobody there reads ~ as a folder,
+    and `C:\\Users\\you\\Pictures` is already the short form.
+    """
+    home = os.path.expanduser("~")
+    if os.name != "nt" and home and path.startswith(home):
+        return "~" + path[len(home):]
+    return path
+
+
+def load_savedir():
+    """The remembered save folder, or the default library if there is none.
+
+    A remembered folder that has since been deleted or unplugged is ignored
+    rather than offered: the question the page asks is "where shall I put
+    these", and answering it with a path that no longer exists is worse than
+    answering it with the default.
+    """
+    try:
+        with open(SAVEDIR_FILE, encoding="utf-8") as handle:
+            line = handle.read().strip()
+    except OSError:
+        return LIBRARY
+    if line and os.path.isdir(line):
+        return line
+    return LIBRARY
+
+
+def save_savedir(path):
+    try:
+        with open(SAVEDIR_FILE, "w", encoding="utf-8") as handle:
+            handle.write(path + "\n")
+    except OSError as exc:
+        print("scanner: could not remember the save folder: %s" % exc,
+              flush=True)
+
+
 # Device pixels on a 3840x2160 panel. One CSS px == one device px, so these
 # are the same numbers the stylesheet uses. His note on the design says the
 # sizes are not exact and to use common sense for scale, which is why every
@@ -121,8 +171,15 @@ LIBRARY = os.environ.get("WALLSCAN_LIBRARY") or os.path.expanduser(
 # at the very moment it went from eighteen entries to hundreds. Seen on screen
 # 2026-08-26. At 360 they have 220px, which is more room than they started
 # with. It is still only the opening size -- the window resizes.
-BAR_W, BAR_H = 1180, 360          # stage one: sources, themes, colour, SEARCH
-BAR_MIN_W, BAR_MIN_H = 820, 300
+# 545 rather than the 360 it was, and the extra 185 is not padding. The
+# sources are cards now -- a name, what the source is, and what it needs --
+# and at 360 only two of the four were on screen, so Commons and Pexels
+# existed only for whoever thought to scroll a pane that does not look like it
+# scrolls. Seen on screen 2026-09-16, not reasoned about, and 470 was tried
+# first and still cut the fourth card off, and 520 clipped its last line. The themes list
+# gains the same 110px, which it can always use.
+BAR_W, BAR_H = 1180, 545          # stage one: sources, themes, size, colour
+BAR_MIN_W, BAR_MIN_H = 820, 360
 ASK_W, ASK_H = 360, 196           # stage two: "How many?"
 RESULTS_W, RESULTS_H = 1760, 1180  # stage three: the grid
 RESULTS_MIN_W, RESULTS_MIN_H = 900, 420
@@ -182,28 +239,44 @@ KEYS = _keys()
 
 
 SOURCES = [
-    {"id": "wallhaven",        "name": "wallhaven",          "ready": True},
-    {"id": "wallhaven-fav",    "name": "wallhaven · loved",  "ready": True},
-    {"id": "commons",          "name": "Commons",            "ready": True},
-    # Ready only if a key is in keys.txt. A pill that lights up without one
-    # would fail at the first request instead of saying why.
-    {"id": "pexels",           "name": "Pexels",             "ready": "pexels" in KEYS,
-     "why": "needs a key you register for"},
-    # These three need an account. Not a preference -- they answered 401, 401
-    # and 403 to a keyless call, measured 2026-08-22.
-    {"id": "unsplash",  "name": "Unsplash",  "ready": False,
-     "why": "key applied for; they review, 5–10 working days"},
-    # A key for this exists and works. It is off anyway, and the reason is
-    # measured rather than assumed: the API reports 6000x4000 and an ordinary
-    # key can only download `largeImageURL`, which came back 1280x853
-    # (2026-08-22). `fullHDURL` and `imageURL` are not served to it. Including
-    # it would have put sub-HD files in a 4K folder under a 6000px label --
-    # worse than not having the source at all.
-    {"id": "pixabay",   "name": "Pixabay",   "ready": False,
-     "why": "free key only downloads 1280px"},
-    {"id": "reddit",    "name": "Reddit",    "ready": False,
-     "why": "needs an app you register for"},
+    # One line each, and they are short on purpose: four cards have to fit the
+    # panel without scrolling, and a panel that hides half its sources behind
+    # a scroll nobody expects is the same as not listing them. The long
+    # version of any of this lives in the README.
+    {"id": "wallhaven", "name": "wallhaven", "ready": True,
+     "what": "The biggest pool here — about 59,000 at 4K or better.",
+     "needs": "Needs nothing: no account, no key."},
+    {"id": "wallhaven-fav", "name": "wallhaven · loved", "ready": True,
+     "what": "The same wallpapers, ordered by how many people kept them.",
+     "needs": "Needs nothing."},
+    {"id": "commons", "name": "Wikimedia Commons", "ready": True,
+     "what": "Photographs and scans. Big files, and rarely 16:9.",
+     "needs": "Needs nothing, but an email or URL in contact.txt roughly "
+              "doubles what comes back."},
+    # Ready only if a key is in keys.txt. A card that lit up without one would
+    # fail at the first request instead of saying why.
+    {"id": "pexels", "name": "Pexels", "ready": "pexels" in KEYS,
+     "what": "A free stock photo library. Landscapes and cities mostly.",
+     "needs": "Needs a free key from pexels.com/api, put in keys.txt.",
+     "why": "needs a free key in keys.txt"},
 ]
+
+# Unsplash, Pixabay and Reddit used to be listed here, greyed out, explaining
+# themselves. They are gone, and the rule that removed them is his: a source
+# that cannot be made to work without editing this file should not be on the
+# panel at all.
+#
+# None of the three has an adapter -- there is no code here that could read
+# them even holding a key -- so every one of them was a button that could only
+# ever say no. What each would need, if any of them is ever built:
+#
+#   Unsplash     a key, applied for by hand and reviewed in 5-10 working days
+#   Pixabay      more than a key. A free key only downloads `largeImageURL`,
+#                which came back 1280x853 for a picture the API called
+#                6000x4000 (2026-08-22). Sub-HD files under a 6000px label is
+#                worse than not having the source.
+#   Reddit       a registered app rather than a key, and the plain JSON feed
+#                answers 403 without one (2026-08-22).
 
 # Which site a pool belongs to. This is what a saved file is named after and
 # what "do I already have this" is keyed on -- NOT the pool.
@@ -657,9 +730,73 @@ RATE_FLOOR = 20
 # previews exist, and why nothing is downloaded at size until it is ticked.
 THUMB_SIZE = "large"
 
-# The floor. Every one of the 66 images already in his library is 3840 wide or
-# more, so anything under it would be the first thing he threw away.
-ATLEAST = "3840x2160"
+# The floor, and now a choice rather than a constant.
+#
+# 4K stays the default, because every one of the 66 images already in his
+# library is 3840 wide or more and anything under it would be the first thing
+# he threw away. The others are here because his friends' screens are not this
+# screen: a 1080p laptop asking for 4K gets a tenth of the results and a much
+# slower search for pictures it will only scale down.
+#
+# `atleast` is wallhaven's own parameter and does the rejecting at their end.
+# `w` is the same number for the two sources that have no such parameter and
+# must be filtered here. Zero means no floor at all.
+SIZES = [
+    {"id": "any", "name": "Any size", "atleast": "", "w": 0},
+    {"id": "1920x1080", "name": "1920 × 1080 · Full HD",
+     "atleast": "1920x1080", "w": 1920},
+    {"id": "2560x1440", "name": "2560 × 1440 · 1440p",
+     "atleast": "2560x1440", "w": 2560},
+    {"id": "3840x2160", "name": "3840 × 2160 · 4K",
+     "atleast": "3840x2160", "w": 3840},
+    {"id": "5120x2880", "name": "5120 × 2880 · 5K",
+     "atleast": "5120x2880", "w": 5120},
+    {"id": "7680x4320", "name": "7680 × 4320 · 8K",
+     "atleast": "7680x4320", "w": 7680},
+    # One exact size, typed in. Everything above is a floor -- "this big or
+    # bigger" -- and a banner is not a floor: 1920x480 asked for as a minimum
+    # returns every 4K wallpaper on the site, because they all clear it.
+    #
+    # wallhaven answers this properly and it is measured, not assumed:
+    # `resolutions=1920x1080` came back with 90,858 results, every one of them
+    # exactly 1920x1080, and `resolutions=3440x1440` with 2,230, same (both
+    # 2026-09-16). The other two sources have no such parameter and are
+    # filtered here, where an exact size will nearly always come back empty --
+    # which the page says on the panel rather than leaving to be discovered.
+    {"id": "exact", "name": "Specific size…", "atleast": "", "w": 0,
+     "exact": True},
+]
+DEFAULT_SIZE = "3840x2160"
+SIZE_BY_ID = {z["id"]: z for z in SIZES}
+
+
+def size_or_default(size):
+    """The chosen size as a dict, whatever form it arrives in.
+
+    A dict passes straight through -- that is a specific size someone typed,
+    built by `exact_size` below. An id is looked up. Anything this program has
+    never written down becomes 4K rather than quietly becoming "any size": a
+    floor that silently disappears is the one failure nobody would notice.
+    """
+    if isinstance(size, dict):
+        return size
+    return SIZE_BY_ID.get(size or "", SIZE_BY_ID[DEFAULT_SIZE])
+
+
+def exact_size(width, height):
+    """One typed-in size, as the fetchers want it.
+
+    Clamped rather than rejected: the page only sends digits, but a pasted
+    50000 would be a search no source can answer and a 0 would be a filter
+    that lets everything through.
+    """
+    width = max(1, min(int(width or 0), 20000))
+    height = max(1, min(int(height or 0), 20000))
+    return {"id": "exact", "name": "%d × %d exactly" % (width, height),
+            "atleast": "", "w": width, "h": height, "exact": True}
+
+
+ATLEAST = SIZE_BY_ID[DEFAULT_SIZE]["atleast"]
 
 # Says who is calling. A scanner that hides what it is deserves the block it
 # gets; Reddit already returns 403 to anything it does not recognise.
@@ -704,7 +841,20 @@ COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 # their end instead of over the wire: `filew:>3839` returned six results all
 # 4524 wide or more, measured 2026-08-22. `filetype:bitmap` keeps out the SVGs
 # and PDFs that also live in the file namespace.
-COMMONS_FILTER = "filetype:bitmap filew:>3839"
+def commons_filter(min_w, min_h=0):
+    """Commons' search understands width and height filters, so the rejecting
+    happens at their end. `filetype:bitmap` keeps out the SVGs and PDFs that
+    also live in the file namespace, and is wanted whatever the size.
+
+    For an exact size this narrows to "at least", and the exact match is made
+    on the rows themselves -- Commons has no "exactly this" to ask for.
+    """
+    bits = ["filetype:bitmap"]
+    if min_w > 0:
+        bits.append("filew:>%d" % (min_w - 1))
+    if min_h > 0:
+        bits.append("fileh:>%d" % (min_h - 1))
+    return " ".join(bits)
 
 # Commons needs something to search for. Everything else here runs happily on
 # an empty query; this one returns nothing at all without a term.
@@ -720,9 +870,10 @@ COMMONS_DEFAULT = "landscape"
 # the same wallpapers is not three sources.
 COMMONS_POOL = {"commons": ""}
 
-# The floor as a number, for checking rows a source filtered itself. Same
-# value as ATLEAST above.
-MIN_WIDTH = 3840
+# The floor as a number, for checking rows a source filtered itself. The
+# chosen size carries it now; this is what a call that was given no size at
+# all falls back to.
+MIN_WIDTH = SIZE_BY_ID[DEFAULT_SIZE]["w"]
 
 # Placeholders instead of the network. The self-test needs a run that does not
 # depend on wallhaven being up, and a deterministic one it can assert against.
@@ -841,8 +992,8 @@ def run_js(webview, script):
 # one the corners go black rather than transparent.
 
 
-def already_have():
-    """The ids of wallpapers already in the library, read off their filenames.
+def already_have(where=None):
+    """The ids of wallpapers already in the folder, read off their filenames.
 
     63 of his 66 images are named `wallhaven-<id>.jpg`, so for that source "do
     I already have this" costs a directory listing and nothing else. Any source
@@ -859,11 +1010,12 @@ def already_have():
     of 67 included a `.desktop` shortcut sitting in with the pictures.
     """
     seen = set()
-    if not os.path.isdir(LIBRARY):
+    where = where or LIBRARY
+    if not os.path.isdir(where):
         return seen
     known = "|".join(re.escape(name) for name in sorted(set(SITE.values())))
     pattern = re.compile(r"^(%s)-([A-Za-z0-9]+)$" % known)
-    for name in os.listdir(LIBRARY):
+    for name in os.listdir(where):
         stem, ext = os.path.splitext(name)
         if ext.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
             continue
@@ -902,7 +1054,8 @@ def fetch(url, timeout=25, headers=None, limits_for=None):
         return response.read()
 
 
-def wallhaven_page(query, page, seed, sorting="random", colour=None):
+def wallhaven_page(query, page, seed, sorting="random", colour=None,
+                   size=None):
     """One page of wallhaven results, as the API returns it.
 
     `sorting=random` with a held seed is what makes paging coherent: without
@@ -913,8 +1066,17 @@ def wallhaven_page(query, page, seed, sorting="random", colour=None):
     Categories 100 is General only -- not anime, not people. Purity 100 is
     safe content only, which is also the half of the API that needs no key.
     """
-    params = [("atleast", ATLEAST), ("categories", "100"), ("purity", "100"),
+    params = [("categories", "100"), ("purity", "100"),
               ("sorting", sorting), ("page", str(page))]
+    # `resolutions` is exactly-this-size and `atleast` is this-or-bigger.
+    # They are different parameters and only one of them belongs on any given
+    # search. Neither is sent empty: wallhaven reads an empty resolution as one
+    # it cannot parse and answers a total of 0 rather than an error.
+    size = SIZE_BY_ID[DEFAULT_SIZE] if size is None else size_or_default(size)
+    if size.get("exact"):
+        params.insert(0, ("resolutions", "%dx%d" % (size["w"], size["h"])))
+    elif size.get("atleast"):
+        params.insert(0, ("atleast", size["atleast"]))
     if seed:
         params.append(("seed", seed))
     if query:
@@ -932,7 +1094,7 @@ def wallhaven_page(query, page, seed, sorting="random", colour=None):
     return json.loads(fetch(url, limits_for="wallhaven").decode("utf-8"))
 
 
-def wallhaven_rows(query, cursor, pool="wallhaven", colour=None):
+def wallhaven_rows(query, cursor, pool="wallhaven", colour=None, size=None):
     """One page of wallhaven, normalised. Returns (rows, next cursor).
 
     A cursor rather than a page number, because the two sources page
@@ -948,7 +1110,7 @@ def wallhaven_rows(query, cursor, pool="wallhaven", colour=None):
     # defaults to a short time window, and a pool that small runs dry in one
     # search.
     sorting = "favorites" if pool == "wallhaven-fav" else "random"
-    payload = wallhaven_page(query, page, seed, sorting, colour)
+    payload = wallhaven_page(query, page, seed, sorting, colour, size)
     seed = (payload.get("meta") or {}).get("seed") or seed
     rows = []
     for r in payload.get("data") or []:
@@ -978,7 +1140,7 @@ def wallhaven_rows(query, cursor, pool="wallhaven", colour=None):
     return rows, {"page": page + 1, "seed": seed}
 
 
-def commons_rows(query, cursor, pool="commons", colour=None):
+def commons_rows(query, cursor, pool="commons", colour=None, size=None):
     """One page of Wikimedia Commons, normalised. Returns (rows, next cursor).
 
     A next cursor of None means the search is exhausted. Commons says so by
@@ -989,10 +1151,15 @@ def commons_rows(query, cursor, pool="commons", colour=None):
     happens at their end. The check below is the belt to that braces: `filew`
     is an index, and an index can lag the file it describes.
     """
+    want = size_or_default(size)
+    min_w = want["w"]
     params = {
         "action": "query",
         "generator": "search",
-        "gsrsearch": "%s %s %s" % (COMMONS_FILTER, COMMONS_POOL.get(pool, ""),
+        "gsrsearch": "%s %s %s" % (commons_filter(min_w,
+                                                  want.get("h", 0)
+                                                  if want.get("exact") else 0),
+                                   COMMONS_POOL.get(pool, ""),
                                    query or COMMONS_DEFAULT),
         "gsrnamespace": "6",
         "gsrlimit": "24",
@@ -1010,7 +1177,10 @@ def commons_rows(query, cursor, pool="commons", colour=None):
         info = (entry.get("imageinfo") or [{}])[0]
         if not info.get("thumburl") or not info.get("url"):
             continue
-        if (info.get("width") or 0) < MIN_WIDTH:
+        if (info.get("width") or 0) < min_w:
+            continue
+        if want.get("exact") and (info.get("width") != want["w"]
+                                  or info.get("height") != want["h"]):
             continue
         rows.append({
             "ident": str(entry.get("pageid")),
@@ -1045,7 +1215,7 @@ PEXELS_CURATED = "https://api.pexels.com/v1/curated"
 PEXELS_THUMB = "medium"
 
 
-def pexels_rows(query, cursor, pool="pexels", colour=None):
+def pexels_rows(query, cursor, pool="pexels", colour=None, size=None):
     """One page of Pexels, normalised. Returns (rows, next cursor).
 
     The key travels in an Authorization header, never in the URL. Pexels has no
@@ -1054,6 +1224,8 @@ def pexels_rows(query, cursor, pool="pexels", colour=None):
     narrow query will do worse.
     """
     page = cursor.get("page", 1)
+    want = size_or_default(size)
+    min_w = want["w"]
     params = {"per_page": "80", "page": str(page)}
     if query:
         params["query"] = query
@@ -1067,7 +1239,10 @@ def pexels_rows(query, cursor, pool="pexels", colour=None):
     rows = []
     for photo in payload.get("photos") or []:
         src = photo.get("src") or {}
-        if (photo.get("width") or 0) < MIN_WIDTH:
+        if (photo.get("width") or 0) < min_w:
+            continue
+        if want.get("exact") and (photo.get("width") != want["w"]
+                                  or photo.get("height") != want["h"]):
             continue
         if not src.get(PEXELS_THUMB) or not src.get("original"):
             continue
@@ -1096,7 +1271,8 @@ def pexels_rows(query, cursor, pool="pexels", colour=None):
 def _pool(fn, pool):
     """Bind a pool to its adapter. A plain lambda in the dict below would close
     over the loop variable and every entry would fetch the last pool."""
-    return lambda query, cursor, colour=None: fn(query, cursor, pool, colour)
+    return lambda query, cursor, colour=None, size=None: fn(
+        query, cursor, pool, colour, size)
 
 
 def _adapter(name):
@@ -1242,7 +1418,7 @@ class Window(QMainWindow):
     def __init__(self, on_close):
         super().__init__()
         self._on_close = on_close
-        self.setWindowTitle("Wallpaper scanner")
+        self.setWindowTitle("Wallpaper Finder")
         # host: no title bar, no border. Qt.Window keeps it a real top-level
         # window with a taskbar entry -- Qt.FramelessWindowHint alone on some
         # window managers gives a window that cannot be focused.
@@ -1272,6 +1448,17 @@ def main():
     # WALLSCAN_SCALE=1.5 puts it back for anyone who wants the window bigger,
     # which on a high-DPI Windows laptop is a reasonable thing to want. Both
     # have to be set before the application exists; after it, they do nothing.
+    # host: the name the window manager sees.
+    #
+    # GTK took this from `set_prgname`. Qt's X11 backend takes the instance
+    # half of WM_CLASS from RESOURCE_NAME and falls back to argv[0], which made
+    # this window announce itself as "scanner.py". That is not cosmetic here: a
+    # name that collides with a picom rule is the most repeated bug in this
+    # desktop's history, `pale-wallscan` was chosen against picom.conf so that
+    # it collides with none of them, and anything that finds this window by
+    # class looks for that name. Windows ignores all of it.
+    os.environ.setdefault("RESOURCE_NAME", PRGNAME)
+
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "0")
     scale = os.environ.get("WALLSCAN_SCALE")
     if scale:
@@ -1387,6 +1574,12 @@ def main():
              "size_before_roll": None, "stage": "bar", "running": False,
              "want": 0, "found": 0, "index": 0, "timer": None,
              "sources": [], "themes": [], "typed": "", "colour": "",
+             # The minimum resolution, as an id from SIZES. 4K unless the
+             # dropdown says otherwise.
+             "size": DEFAULT_SIZE,
+             # Where Submit will put them. Asked about on every save, so it
+             # can be changed there; remembered so it usually needs no answer.
+             "savedir": load_savedir(),
              # How hard the colour is being held right now. It only ever
              # loosens, and only when the sources have nothing left at the
              # current level -- see COLOUR_LEVELS.
@@ -1400,10 +1593,24 @@ def main():
              "stopflag": None, "worker": None, "savestop": None,
              "maximized": False}
 
-    seen = already_have()
+    seen = already_have(state["savedir"])
     offered = load_offered()
-    print("scanner: %d wallpapers already in the library have a readable id"
-          % len(seen), flush=True)
+    print("scanner: %d wallpapers already in %s have a readable id"
+          % (len(seen), pretty_path(state["savedir"])), flush=True)
+
+    def relearn_folder(where):
+        """Read the new folder's filenames after the save folder changes.
+
+        Without this, "do I already have this" would go on answering for the
+        folder that was chosen when the window opened, and the first search
+        after a change would re-offer wallpapers sitting in the new one. The
+        set is emptied and refilled rather than rebound, because the hunting
+        thread and the saver both close over this exact object.
+        """
+        seen.clear()
+        seen.update(already_have(where))
+        print("scanner: %d wallpapers already in %s have a readable id"
+              % (len(seen), pretty_path(where)), flush=True)
     print("scanner: %d already offered to you before (offered.txt — delete it "
           "to start being shown them again)" % len(offered), flush=True)
     if OFFERED != os.path.join(HERE, "offered.txt"):
@@ -1513,11 +1720,22 @@ def main():
         # page that wallhaven would refuse is dropped here rather than turned
         # into a search that silently returns nothing.
         state["colour"] = colour if colour in COLOUR_HEXES else ""
-        print("scanner: search wants sources=%s themes=%s typed=%r colour=%s"
+        # Same rule as the colour: a size this program has not written down
+        # becomes the default rather than a search nobody can account for.
+        # A specific size arrives as two numbers beside the id; anything else
+        # is one of the written-down floors.
+        if payload.get("size") == "exact":
+            state["size"] = exact_size(payload.get("width"),
+                                       payload.get("height"))
+        else:
+            state["size"] = size_or_default(payload.get("size"))["id"]
+        print("scanner: search wants sources=%s themes=%s typed=%r colour=%s "
+              "size=%s"
               % (state["sources"] or ["<none>"], state["themes"] or ["<none>"],
                  state["typed"],
                  ("%s %s" % (COLOUR_NAMES.get(state["colour"], "?"),
-                             state["colour"])) if state["colour"] else "any"),
+                             state["colour"])) if state["colour"] else "any",
+                 size_or_default(state["size"])["name"]),
               flush=True)
         state["stage"] = "ask"
         resize_to(ASK_W, ASK_H, ASK_W, ASK_H)
@@ -1668,13 +1886,16 @@ def main():
         query = " ".join([w for w in (list(state["themes"])
                                       + [state["typed"]]) if w]).strip()
         colour = state.get("colour") or ""
+        size = state.get("size") or DEFAULT_SIZE
         state["colour_level"] = 0
         state["colour_dry"] = 0
-        idle_add(hunt_note, "search string sent to the sources: %r%s"
-                      % (query if query else "",
-                         (" | colour %s (%s), held %s"
-                          % (COLOUR_NAMES.get(colour, "?"), colour,
-                             COLOUR_LEVEL_NAMES[0])) if colour else ""))
+        idle_add(hunt_note, "search string sent to the sources: %r | at "
+                 "least %s%s"
+                 % (query if query else "",
+                    size_or_default(size)["name"],
+                    (" | colour %s (%s), held %s"
+                     % (COLOUR_NAMES.get(colour, "?"), colour,
+                        COLOUR_LEVEL_NAMES[0])) if colour else ""))
         want = state["want"]
         delivered = state["found"]
         owned_skips = state.get("skipped_owned", 0)
@@ -1755,7 +1976,8 @@ def main():
                 last_call[name] = time.monotonic()
 
                 try:
-                    rows, nxt = FETCHERS[name](query, cursors[name], colour)
+                    rows, nxt = FETCHERS[name](query, cursors[name], colour,
+                                               size)
                 except Exception as exc:
                     # One source falling over is not the end of the search. It
                     # is dropped, said out loud, and the others carry on.
@@ -1946,6 +2168,27 @@ def main():
         print("scanner: %s" % ("resumed" if state["running"] else "stopped"),
               flush=True)
 
+    def on_choosedir(_payload):
+        """The "Choose folder" button in the save panel.
+
+        A real folder chooser rather than a box to type a path into: a typed
+        path with one letter wrong is a save that fails at the last step,
+        after the downloads. This is the one dialog in the program that is not
+        drawn by the page, because a file chooser is the system's own job and
+        every one written in a web page is worse than the one already there.
+        """
+        chosen = QFileDialog.getExistingDirectory(
+            window, "Save wallpapers to", state["savedir"] or LIBRARY)
+        if not chosen:
+            print("scanner: folder chooser cancelled, still saving to %s"
+                  % state["savedir"], flush=True)
+            return
+        state["savedir"] = chosen
+        save_savedir(chosen)
+        relearn_folder(chosen)
+        say("scanner_setSaveDir", pretty_path(chosen), chosen)
+        print("scanner: saving to %s from now on" % chosen, flush=True)
+
     def on_submit(raw):
         """Download the ticked wallpapers at full size into his library.
 
@@ -1953,10 +2196,19 @@ def main():
         it only happens here -- on a button he pressed, for pictures he chose.
         Nothing is ever downloaded at size on the strength of a search.
         """
-        picks = json.loads(raw)
+        payload = json.loads(raw)
+        picks = payload.get("picks") or []
+        # The folder the page had on its panel when the button was pressed.
+        # Trusted only as far as it being a real folder: anything else falls
+        # back to what this side already had rather than failing per file.
+        where = payload.get("dir") or state["savedir"] or LIBRARY
+        if where != state["savedir"]:
+            state["savedir"] = where
+            save_savedir(where)
+            relearn_folder(where)
         rows = [state["rows"][key] for key in picks if key in state["rows"]]
-        print("scanner: submit -- %d selected: %s"
-              % (len(picks), ", ".join(picks) if picks else "<none>"),
+        print("scanner: submit -- %d selected for %s: %s"
+              % (len(picks), where, ", ".join(picks) if picks else "<none>"),
               flush=True)
 
         if FAKE:
@@ -1981,12 +2233,11 @@ def main():
 
         flag = threading.Event()
         state["savestop"] = flag
-        threading.Thread(target=save_all, args=(rows, flag),
+        threading.Thread(target=save_all, args=(rows, flag, where),
                          daemon=True).start()
 
-    def saved_done(saved, existing, failed, megabytes):
-        where = LIBRARY.replace(os.path.expanduser("~"), "~")
-        parts = ["%d saved to %s" % (saved, where)]
+    def saved_done(saved, existing, failed, megabytes, where):
+        parts = ["%d saved to %s" % (saved, pretty_path(where))]
         if existing:
             parts.append("%d already there" % existing)
         if failed:
@@ -1999,7 +2250,7 @@ def main():
         print("scanner: %s" % line, flush=True)
         return False
 
-    def save_all(rows, stopflag):
+    def save_all(rows, stopflag, where):
         """Fetch each chosen wallpaper at full size, on its own thread.
 
         Three things worth their lines:
@@ -2025,9 +2276,9 @@ def main():
         # machine on the first run -- every save would otherwise fail one at
         # a time, and the status strip would blame the download.
         try:
-            os.makedirs(LIBRARY, exist_ok=True)
+            os.makedirs(where, exist_ok=True)
         except OSError as exc:
-            idle_add(hunt_failed, "cannot make %s: %s" % (LIBRARY, exc))
+            idle_add(hunt_failed, "cannot make %s: %s" % (where, exc))
             return
         for n, row in enumerate(rows, 1):
             if stopflag.is_set():
@@ -2041,7 +2292,7 @@ def main():
             # picture reached either way must land on one filename.
             name = "%s-%s%s" % (SITE.get(row["source"], row["source"]),
                                 row["ident"], ext)
-            target = os.path.join(LIBRARY, name)
+            target = os.path.join(where, name)
 
             if os.path.exists(target):
                 existing += 1
@@ -2075,7 +2326,8 @@ def main():
             idle_add(hunt_note, "saved %s (%.1f MB)"
                           % (name, len(blob) / 1048576.0))
 
-        idle_add(saved_done, saved, existing, failed, total / 1048576.0)
+        idle_add(saved_done, saved, existing, failed, total / 1048576.0,
+                 where)
 
     # ---- closing, and the question that has to be asked -----------------
 
@@ -2253,6 +2505,7 @@ def main():
         "cancelask": on_cancelask,
         "stopresume": on_stopresume,
         "submit": on_submit,
+        "choosedir": on_choosedir,
         "askdiscard": on_askdiscard,
         "discard": on_discard,
         "keepgoing": on_keepgoing,
@@ -2275,6 +2528,9 @@ def main():
         say("scanner_setSources", SOURCES)
         say("scanner_setThemes", THEMES)
         say("scanner_setColours", COLOURS)
+        say("scanner_setSizes", SIZES, DEFAULT_SIZE)
+        say("scanner_setSaveDir", pretty_path(state["savedir"]),
+            state["savedir"])
         say("scanner_setSeenCount", len(offered))
         age = theme_cache_age_days()
         print("scanner: page loaded, %d sources, %d themes and %d colours "
