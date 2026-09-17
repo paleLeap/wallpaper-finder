@@ -164,7 +164,8 @@ window.scanner_setSources = (list) => {
     if (s.needs) {
       const needs = document.createElement('span');
       needs.className = 'needs';
-      needs.textContent = s.ready ? s.needs : '⚠ ' + s.needs;
+      needs.textContent = s.ready ? s.needs
+                                  : '⚠ ' + s.needs + ' — click to add it.';
       body.appendChild(document.createElement('br'));
       body.appendChild(needs);
     }
@@ -173,7 +174,11 @@ window.scanner_setSources = (list) => {
     b.appendChild(body);
 
     if (!s.ready) {
-      b.disabled = true;
+      /* Not `disabled`. A disabled card is the one thing on this panel that
+       * says no and cannot be asked why; this one opens the window that
+       * explains it and takes the key. */
+      b.classList.add('locked');
+      b.addEventListener('click', () => openKeyWindow(s));
     } else {
       b.addEventListener('click', () => {
         b.classList.toggle('on');
@@ -392,6 +397,88 @@ const chosenColour = () => chosenColourHex;
  * class names are asked for: reading only one of them is how this quietly
  * sent a search with no sources at all the moment the source pills became
  * cards. Caught by the self-test, which is what it is for. */
+/* ---------- the key window ---------- */
+
+/* Opened by a source that cannot run yet. It says why in that source's own
+ * words -- the host writes them, beside the code that knows what the source
+ * answers without a key -- offers to open the sign-up page, and takes the
+ * key. The key goes to the host and into keys.txt; this page never keeps it
+ * and never sends it anywhere else. */
+const keyPanel = document.getElementById('keypanel');
+const keyInput = document.getElementById('keyinput');
+const keyHint = document.getElementById('keyhint');
+const KEY_HINT_DEFAULT = keyHint.textContent;
+let keySource = null;
+
+const openKeyWindow = (source) => {
+  keySource = source;
+  document.getElementById('keytitle').textContent = source.name;
+  const why = document.getElementById('keywhy');
+  why.innerHTML = '';
+  (source.why || [source.needs || '']).forEach((line) => {
+    const p = document.createElement('p');
+    p.textContent = line;
+    why.appendChild(p);
+  });
+  const signup = document.getElementById('keysignup');
+  signup.hidden = !source.signup;
+  keyInput.value = '';
+  keyHint.textContent = KEY_HINT_DEFAULT;
+  keyHint.className = 'hint';
+  keyPanel.hidden = false;
+  keyInput.focus();
+  note('key window opened for ' + source.id);
+};
+
+const closeKeyWindow = () => {
+  keyPanel.hidden = true;
+  /* Not left sitting in the box behind a closed panel. */
+  keyInput.value = '';
+  keySource = null;
+};
+
+const saveKey = () => {
+  if (!keySource) return;
+  const typed = keyInput.value.trim();
+  if (!typed) {
+    keyHint.textContent = 'Paste the key first.';
+    keyHint.className = 'hint bad';
+    return;
+  }
+  keyHint.textContent = 'Saving…';
+  keyHint.className = 'hint';
+  /* The key is never written to the log. `note` gets the source, not the
+   * secret. */
+  send('savekey', JSON.stringify({ source: keySource.key, key: typed }));
+  note('key submitted for ' + keySource.id);
+};
+
+/* The host answers either way, so a save that fails says so here rather than
+ * leaving the card still refusing with no explanation. */
+window.scanner_keySaved = (name, ok, why) => {
+  if (ok) {
+    keyHint.textContent = 'Saved. ' + name + ' is on now.';
+    keyHint.className = 'hint good';
+    setTimeout(closeKeyWindow, 900);
+  } else {
+    keyHint.textContent = 'Not saved — ' + (why || 'unknown reason') + '.';
+    keyHint.className = 'hint bad';
+  }
+};
+
+document.getElementById('keysave').addEventListener('click', saveKey);
+document.getElementById('keycancel').addEventListener('click', () => {
+  closeKeyWindow();
+  note('key window closed, nothing saved');
+});
+keyInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') saveKey();
+  if (e.key === 'Escape') { closeKeyWindow(); note('key window escaped'); }
+});
+document.getElementById('keysignup').addEventListener('click', () => {
+  if (keySource) send('openurl', keySource.id);
+});
+
 const chosen = (selector) =>
   [...document.querySelectorAll(selector + ' .pick.on, ' + selector + ' .source.on')]
     .map((b) => b.dataset.id ||
@@ -685,6 +772,7 @@ window.scanner_setStage = (stage) => {
   savePanel.hidden = true;
   helpPanel.hidden = true;
   sizePanel.hidden = true;
+  closeKeyWindow();
   closeAllDrops();
   if (stage === 'ask') {
     howmany.value = '10';        /* never remembered, at his instruction */
@@ -835,6 +923,46 @@ if (SELFTEST === '1' || SELFTEST === 'live') {
     }
     note('selftest sees the GIF size floor reading "' +
          document.getElementById('sizelabel').textContent + '"');
+    /* The key window, opened from the source that cannot run without one.
+     *
+     * It is opened, read and then backed out of. The Save button is NOT
+     * pressed and no key is typed: this test runs against the real keys.txt,
+     * and a self-test that writes a made-up key into it would break the
+     * source it was meant to be checking. That half is a person's to prove. */
+    const locked = [...document.querySelectorAll('#sourcelist .source.locked')];
+    if (!locked.length) {
+      note('selftest KEY WINDOW SKIPPED: every GIF source already has a key');
+    } else {
+      press(locked[0], 'a source that needs a key');
+      if (document.getElementById('keypanel').hidden) {
+        fails_forget.push('a locked source did not open the key window');
+      }
+      const why = document.querySelectorAll('#keywhy p').length;
+      note('selftest sees the key window for "' +
+           document.getElementById('keytitle').textContent + '" with ' +
+           why + ' paragraphs and a box');
+      if (!why) fails_forget.push('the key window explains nothing');
+      if (document.getElementById('keysignup').hidden) {
+        fails_forget.push('the key window offers no sign-up link');
+      }
+      /* The Save button has to be inside the window. It is the point of the
+       * panel, and this is the wordiest panel here. */
+      const box = document.getElementById('keybox').getBoundingClientRect();
+      const save = document.getElementById('keysave').getBoundingClientRect();
+      note('KEY WINDOW box=' + Math.round(box.height) + 'px in ' +
+           Math.round(frame.clientHeight) + 'px, save button bottom at ' +
+           Math.round(save.bottom));
+      if (save.bottom > frame.clientHeight + 1 || save.width < 1) {
+        fails_forget.push('the Save button is outside the window: ' +
+                          Math.round(save.bottom) + ' past ' +
+                          frame.clientHeight);
+      }
+      press(document.getElementById('keycancel'), 'BACK on the key window');
+      if (!document.getElementById('keypanel').hidden) {
+        fails_forget.push('the key window would not close');
+      }
+    }
+
     press(kinds.find((k) => k.dataset.id === 'images'), 'Images again');
     await until('the wallpaper sources back', () =>
       [...document.querySelectorAll('#sourcelist .source')]

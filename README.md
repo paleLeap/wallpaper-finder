@@ -88,6 +88,15 @@ that panel is a dead end.
 |---|---|
 | **GIPHY** | A free key. Create one at https://developers.giphy.com/ — instant — and put `giphy = <your key>` in `program/keys.txt` |
 
+**A source that needs a key says so, and takes it.** Click any source that
+isn't working and a window opens explaining why it isn't — what the site
+actually answers without a key, and what the key costs and limits you to. There
+is a button that opens the sign-up page and a box to paste the key into. It's
+written into `program/keys.txt` (created if it isn't there, and set readable
+only by you), and the source starts working immediately — no restart, no
+editing files by hand. The program never prints a key; the log records which
+source was given one and how long it was, nothing more.
+
 Switching to GIFs swaps the sizes too. A GIF is usually 200 to 500 pixels
 wide, so the 4K floor that suits a wallpaper would return nothing at all; the
 GIF list runs Any size / 480 / 720 / 1080 wide and starts at Any. Everything
@@ -107,8 +116,9 @@ line in it: an email address or a URL. It goes in the request header to
 Wikimedia and wallhaven, nowhere else. Commons works without it, just half as
 well.
 
-`keys.txt` and `contact.txt` are both gitignored, and the program never prints
-a key.
+You can still edit `program/keys.txt` by hand if you'd rather — the key window
+writes the same file, reusing the commented placeholder line if it's still
+there. `keys.txt` and `contact.txt` are both gitignored.
 
 *Not included, and why:* Unsplash needs a key reviewed by hand over 5–10 working
 days; Pixabay's free key only downloads 1280px however big the picture actually

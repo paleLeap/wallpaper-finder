@@ -38,12 +38,14 @@ wallpapers themselves -- which it downloads only for pictures you ticked, on a
 button you pressed.
 """
 
+import io
 import json
 import os
 import pathlib
 import random
 import re
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -257,7 +259,12 @@ SOURCES = [
     # One line each, and they are short on purpose: four cards have to fit the
     # panel without scrolling, and a panel that hides half its sources behind
     # a scroll nobody expects is the same as not listing them. The long
-    # version of any of this lives in the README.
+    # version of any of this lives in the README and in the key window.
+    #
+    # `key` names the line in keys.txt that turns the source on. A source with
+    # one is listed whether or not the key is there -- a key is something a
+    # person can go and get, which is the whole difference between this and
+    # the three that are not here at all.
     {"id": "wallhaven", "name": "wallhaven", "ready": True,
      "what": "The biggest pool here — about 59,000 at 4K or better.",
      "needs": "Needs nothing: no account, no key."},
@@ -268,20 +275,34 @@ SOURCES = [
      "what": "Photographs and scans. Big files, and rarely 16:9.",
      "needs": "Needs nothing, but an email or URL in contact.txt roughly "
               "doubles what comes back."},
-    # Ready only if a key is in keys.txt. A card that lit up without one would
-    # fail at the first request instead of saying why.
-    {"id": "pexels", "name": "Pexels", "ready": "pexels" in KEYS,
+    {"id": "pexels", "name": "Pexels", "key": "pexels",
      "what": "A free stock photo library. Landscapes and cities mostly.",
      "needs": "Needs a free key from pexels.com/api, put in keys.txt.",
-     "why": "needs a free key in keys.txt"},
+     "signup": "https://www.pexels.com/api/",
+     "why": [
+         "Pexels answers 401 — \u201cMissing API key\u201d — to a call without "
+         "one. Every call, not just some: an early version of this program "
+         "believed Pexels worked keyless, because the 200s it was reading "
+         "came from their edge cache rather than their API.",
+         "The key is free and instant. Register, copy the key from your "
+         "dashboard, and paste it below.",
+     ]},
 
     # ---- GIFs ----
-    {"id": "giphy", "name": "GIPHY", "kind": "gifs",
-     "ready": "giphy" in KEYS,
+    {"id": "giphy", "name": "GIPHY", "kind": "gifs", "key": "giphy",
      "what": "The big GIF library. Reactions, loops, clips.",
      "needs": "Needs a free key from developers.giphy.com — instant, but "
               "rate limited to 100 searches an hour.",
-     "why": "needs a free key in keys.txt"},
+     "signup": "https://developers.giphy.com/",
+     "why": [
+         "GIPHY answers 401 Unauthorized to a call without a key. Measured "
+         "here, so it is what will happen rather than what is documented.",
+         "The key is free and instant: create an account, press Create an "
+         "App, choose the API rather than the SDK, and copy the key. It is "
+         "rate limited to 100 searches an hour and 1,000 a day, which this "
+         "program stays inside — one search costs a call or two, because a "
+         "page is fifty GIFs.",
+     ]},
 ]
 
 # Everything without a kind of its own is a wallpaper source.
@@ -290,7 +311,21 @@ for _s in SOURCES:
 
 
 def sources_for(kind):
-    return [dict(s) for s in SOURCES if s["kind"] == (kind or DEFAULT_KIND)]
+    """The sources for one kind, each with its readiness worked out now.
+
+    Computed rather than stored, because a key can arrive while the window is
+    open: the key window writes one and this has to start saying yes without a
+    restart.
+    """
+    out = []
+    for source in SOURCES:
+        if source["kind"] != (kind or DEFAULT_KIND):
+            continue
+        row = dict(source)
+        name = row.get("key")
+        row["ready"] = (not name) or bool(KEYS.get(name))
+        out.append(row)
+    return out
 
 # Unsplash, Pixabay and Reddit used to be listed here, greyed out, explaining
 # themselves. They are gone, and the rule that removed them is his: a source
@@ -1446,9 +1481,82 @@ def _adapter(name):
 # A source with no key gets no entry, so it can be listed and not searched.
 # A source whose key is missing gets no entry, so it can be listed and not
 # searched.
-FETCHERS = {name: _pool(_adapter(name), name)
+def _build_fetchers():
+    return {name: _pool(_adapter(name), name)
             for name in SITE
-            if name not in ("pexels", "giphy") or name in KEYS}
+            if name not in ("pexels", "giphy") or KEYS.get(name)}
+
+
+FETCHERS = _build_fetchers()
+
+KEYS_PATH = os.path.join(HERE, "keys.txt")
+
+
+def save_key(name, value):
+    """Write one key into keys.txt and turn its source on.
+
+    Rewritten rather than appended to, so that pasting a second key over a
+    first leaves one line and not two -- and a commented example line for the
+    same name is treated as the place it goes, because that is where anyone
+    reading the file would look for it.
+
+    The file is written 0600. It is the only file this program owns that is
+    worth anything to anyone else.
+
+    Nothing here prints the key. The log says which source was given one and
+    how long it was, which is enough to tell a paste from an empty box and
+    tells a reader of the log nothing they could use.
+    """
+    value = (value or "").strip()
+    if not value:
+        return False, "nothing was pasted"
+    if "\n" in value or "\r" in value:
+        return False, "that looks like more than one line"
+
+    try:
+        existing = io.open(KEYS_PATH, encoding="utf-8").read().splitlines()
+    except OSError:
+        # No keys.txt yet. The example beside it is the better starting point
+        # than an empty file: it carries the sign-up links and the warning
+        # that this file is not for sharing.
+        try:
+            existing = io.open(KEYS_PATH + ".example",
+                               encoding="utf-8").read().splitlines()
+        except OSError:
+            existing = ["# API keys. One `name = value` a line."]
+
+    line = "%s = %s" % (name, value)
+    # `giphy =` or `# giphy =`, and nothing else. Anchored and requiring the
+    # `=` so that a line of documentation which merely mentions the name --
+    # the sign-up links at the top of the file each begin with one -- is not
+    # mistaken for the setting and overwritten.
+    slot = re.compile(r"^\s*#?\s*%s\s*=" % re.escape(name), re.I)
+    out, written = [], False
+    for row in existing:
+        if not written and slot.match(row):
+            out.append(line)
+            written = True
+        else:
+            out.append(row)
+    if not written:
+        out.append(line)
+
+    try:
+        with io.open(KEYS_PATH, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(out).rstrip("\n") + "\n")
+        os.chmod(KEYS_PATH, 0o600)
+    except OSError as exc:
+        return False, "could not write keys.txt: %s" % exc
+
+    # The source can be searched from here on, with no restart: the key table
+    # and the fetcher table are both rebuilt in place, because the hunting
+    # thread holds a reference to the one it was given.
+    KEYS[name] = value
+    FETCHERS.clear()
+    FETCHERS.update(_build_fetchers())
+    print("scanner: %s key saved to keys.txt (%d characters) — the source is "
+          "on now, no restart" % (name, len(value)), flush=True)
+    return True, ""
 
 
 def load_offered():
@@ -1888,6 +1996,49 @@ def main():
         say("scanner_setSources", sources_for(kind))
         say("scanner_setSizes", sizes, default)
         state["size"] = default
+
+    def on_savekey(raw):
+        """A key was pasted into the key window.
+
+        The page is answered either way. A save that fails silently would
+        leave someone looking at a source that still says it needs a key,
+        with nothing anywhere saying why.
+        """
+        payload = json.loads(raw)
+        name = payload.get("source") or ""
+        known = {s["key"] for s in SOURCES if s.get("key")}
+        if name not in known:
+            say("scanner_keySaved", name, False, "that is not a source that "
+                                                 "takes a key")
+            return
+        ok, why = save_key(name, payload.get("key"))
+        if ok:
+            # The panel is rebuilt so the card it was opened from is ticked
+            # and tickable, rather than still sitting there saying no.
+            say("scanner_setSources", sources_for(state["kind"]))
+        say("scanner_keySaved", name, ok, why)
+
+    def on_openurl(payload):
+        """Open a sign-up page in whatever browser this machine uses.
+
+        Only ever a URL this program wrote down itself -- the page sends the
+        source's id, not an address -- so nothing the window is shown can talk
+        this into opening something else.
+        """
+        wanted = {s["id"]: s.get("signup") for s in SOURCES}
+        url = wanted.get(payload)
+        if not url:
+            return
+        print("scanner: opening %s" % url, flush=True)
+        try:
+            if os.name == "nt":
+                os.startfile(url)              # noqa: S606 -- Windows' own opener
+            else:
+                subprocess.Popen(["xdg-open", url],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+        except Exception as exc:
+            print("scanner: could not open it: %s" % exc, flush=True)
 
     def on_kind(payload):
         kind = payload if payload in [k["id"] for k in KINDS] else DEFAULT_KIND
@@ -2696,6 +2847,8 @@ def main():
         "submit": on_submit,
         "choosedir": on_choosedir,
         "kind": on_kind,
+        "savekey": on_savekey,
+        "openurl": on_openurl,
         "askdiscard": on_askdiscard,
         "discard": on_discard,
         "keepgoing": on_keepgoing,

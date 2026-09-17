@@ -786,6 +786,80 @@ html, body {
 #helpbox b { color: var(--text); font-weight: 600; }
 #helpbox .askrow { margin-top: 14px; }
 
+/* The key window. Same overlay shape as the rest of them. */
+#keypanel {
+  position: absolute; inset: 0;
+  background: rgba(6,12,9,0.72);
+  display: grid; place-items: center;
+  z-index: 47;
+  padding: 20px;
+  /* This is the wordiest panel in the program and the window resizes. Rather
+     than let the Save button end up below the bottom edge where it cannot be
+     pressed, the overlay scrolls. */
+  overflow-y: auto;
+}
+#keypanel[hidden] { display: none; }
+
+#keybox {
+  width: 100%;
+  max-width: 480px;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+}
+#keytitle { font-size: 17px; margin-bottom: 4px; }
+#keywhy p {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+/* A full-width flat button, which `.flat` on its own is not -- it is sized for
+   the end column of the bar. */
+.flat.wide {
+  width: 100%;
+  height: 36px;
+  margin-top: 13px;
+  font-size: 12.5px;
+}
+
+#keyinput {
+  width: 100%;
+  height: 40px;
+  margin-top: 10px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  /* A key is a run of characters nobody reads as a word, and the one thing
+     that will be done to it after pasting is looking to see whether it landed
+     whole. A monospace face makes that possible. */
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-in);
+  outline: none;
+  -webkit-user-select: text;
+  cursor: text;
+  transition: border-color var(--anim) var(--ease);
+}
+#keyinput:focus { border-color: var(--accent-hi); }
+#keypanel .hint { margin: 10px 0 14px; }
+#keypanel .askrow { justify-content: flex-end; }
+
+/* The answer, under the box. Green for saved; for a refusal it is the warm
+   colour, because there is no red in this program. */
+#keyhint.bad { color: var(--warm-hi); }
+#keyhint.good { color: var(--accent-hi); }
+
+/* A source that cannot run yet is still a button -- it opens the window that
+   explains it and takes the key. It was `disabled` before, which made it the
+   one thing on the panel that said no and could not be asked why. */
+.source.locked { cursor: pointer; }
+.source.locked:hover { border-color: var(--accent-hi); opacity: 0.72; }
+
 /* The specific-size panel shares the same overlay shape as the rest. */
 #sizepanel {
   position: absolute; inset: 0;
