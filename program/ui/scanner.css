@@ -47,7 +47,12 @@ html, body {
   background: transparent;      /* the shape is cut by the host; anything
                                    painted out here would square the corners */
   overflow: hidden;
-  font-family: Inter, "DejaVu Sans", system-ui, sans-serif;
+  /* Inter is what this was drawn in. "Segoe UI Variable" and "Segoe UI" are
+     Windows' own, and sit in the list because the next name after them was
+     DejaVu Sans -- a Linux font that no Windows machine has, which would have
+     dropped the whole window onto a default serif-ish fallback. */
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", "DejaVu Sans",
+               system-ui, sans-serif;
   color: var(--text);
   -webkit-user-select: none;
   cursor: default;
@@ -835,7 +840,8 @@ html, body {
   /* A key is a run of characters nobody reads as a word, and the one thing
      that will be done to it after pasting is looking to see whether it landed
      whole. A monospace face makes that possible. */
-  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+  font-family: "DejaVu Sans Mono", "Cascadia Mono", Consolas, ui-monospace,
+               monospace;
   color: var(--text);
   background: var(--ground);
   border: 1px solid var(--edge);
@@ -952,3 +958,25 @@ html, body {
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: content-box; }
+
+
+/* A short screen. Measured: on a 1024x600 display the four source cards want
+   423px and the pane has 328, so the fourth one goes behind a scroll nobody
+   expects -- the defect this program has already been caught by twice.
+   
+   What goes is the description, not the requirement: "what it is" can be
+   guessed from the name, and "what it needs" is the line that decides whether
+   the source can be used at all. 1366x768 and up keeps both. */
+@media (max-height: 660px) {
+  .source .what { display: none; }
+  .source { padding: 6px 10px; }
+  .source .needs { font-size: 11px; line-height: 1.3; margin-top: 2px; }
+  .list.col { gap: 5px; }
+  #kindpick { margin-bottom: 7px; height: auto; }
+  .kind { height: 26px; }
+  .pane h2 { margin-bottom: 6px; }
+  /* The last few pixels come off the strip at the bottom, which has two
+     dropdowns in it and no reason to be tall. */
+  #choicepane { padding: 5px 12px 6px; }
+  .dropbtn { height: 31px; }
+}

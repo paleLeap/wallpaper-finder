@@ -118,6 +118,38 @@ SAVEDIR_FILE = os.environ.get("WALLSCAN_SAVEDIR_FILE") or os.path.join(
     HERE, "savedir.txt")
 
 
+def setup_output():
+    """Make sure this program has somewhere to print to. Windows, mostly.
+
+    Two things go wrong there and both are silent.
+
+    Started from `scan-quiet.cmd`, the program runs under pythonw.exe, which
+    has no console at all and leaves sys.stdout as None. Every line this
+    program writes -- and its log is the only account of what its page did --
+    would go nowhere. They go to cache/launch.log instead, which is the same
+    file the Linux menu launcher redirects into, so there is one place to look
+    on either system.
+
+    And a console on Windows is not necessarily UTF-8. This program's status
+    lines are full of em dashes and middle dots; printing one to a cp1252
+    console raises UnicodeEncodeError, which would take the program down from
+    inside a print statement. Replacing an unprintable character is always
+    better than dying of one.
+    """
+    if sys.stdout is None:
+        os.makedirs(os.path.join(HERE, "cache"), exist_ok=True)
+        log = io.open(os.path.join(HERE, "cache", "launch.log"), "a",
+                      encoding="utf-8", errors="replace", buffering=1)
+        sys.stdout = log
+        sys.stderr = log
+        return
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass                        # an older stream, or already wrapped
+
+
 def pretty_path(path):
     """A path short enough to read on a button.
 
@@ -226,7 +258,8 @@ def _keys():
     """
     found = {}
     try:
-        with open(os.path.join(HERE, "keys.txt")) as handle:
+        with open(os.path.join(HERE, "keys.txt"),
+                  encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
@@ -506,7 +539,7 @@ def load_themes():
     returns is on screen the moment the window opens.
     """
     try:
-        with open(THEME_CACHE) as handle:
+        with open(THEME_CACHE, encoding="utf-8") as handle:
             blob = json.load(handle)
         words = [w for w in blob.get("themes") or [] if _theme_ok(w)]
         if words:
@@ -519,7 +552,7 @@ def load_themes():
 def theme_cache_age_days():
     """How old the harvest is, in days. None if there is no cache."""
     try:
-        with open(THEME_CACHE) as handle:
+        with open(THEME_CACHE, encoding="utf-8") as handle:
             stamp = json.load(handle).get("harvested")
         then = time.mktime(time.strptime(stamp, "%Y-%m-%d"))
         return (time.time() - then) / 86400.0
@@ -640,7 +673,7 @@ def harvest_themes(budget=600, stopflag=None, note=print):
     }
     os.makedirs(os.path.dirname(THEME_CACHE), exist_ok=True)
     tmp = THEME_CACHE + ".part"
-    with open(tmp, "w") as handle:
+    with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(blob, handle, indent=1)
     os.replace(tmp, THEME_CACHE)           # never a half-written cache
     note("theme harvest: %d themes written to %s (%d from wallhaven, %d from "
@@ -915,7 +948,7 @@ ATLEAST = SIZE_BY_ID[DEFAULT_SIZE]["atleast"]
 def _contact():
     path = os.path.join(HERE, "contact.txt")
     try:
-        with open(path) as handle:
+        with open(path, encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if line and not line.startswith("#"):
@@ -1563,7 +1596,7 @@ def load_offered():
     """Everything already shown to him, from previous runs and this one."""
     shown = set()
     try:
-        with open(OFFERED) as handle:
+        with open(OFFERED, encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if line:
@@ -1581,7 +1614,7 @@ def record_offered(key):
     stops a search precisely because he has seen enough of it.
     """
     try:
-        with open(OFFERED, "a") as handle:
+        with open(OFFERED, "a", encoding="utf-8") as handle:
             handle.write(key + "\n")
     except OSError as exc:
         print("scanner: could not record %s: %s" % (key, exc), flush=True)
@@ -1748,8 +1781,6 @@ def main():
         return 0
 
     window = Window(lambda: shutdown())
-    window.resize(BAR_W, BAR_H)
-    window.setMinimumSize(BAR_MIN_W, BAR_MIN_H)
 
     webview = QWebEngineView()
     page = Page(webview)
@@ -1908,6 +1939,25 @@ def main():
                   % (fn, fn, ", ".join(json.dumps(a) for a in args)))
         idle_add(run_js, webview, script)
 
+    def on_screen(w, h):
+        """One stage's size, cut down to the screen it will open on.
+
+        These numbers were chosen on a 3840x2160 panel, where the results
+        window at 1760x1180 is less than a third of the screen. On a 1920x1080
+        laptop -- which is what a friend is likely to have -- 1180 tall is
+        taller than the whole display, so the window would open with its
+        bottom edge, and the Submit button on it, off the screen.
+
+        Nothing is scaled: the layout is authored in real pixels and the panes
+        reflow. It is only ever made smaller, and only when it would not fit.
+        """
+        screen = app.primaryScreen()
+        if screen is None:
+            return w, h
+        area = screen.availableGeometry()
+        return (min(w, max(320, area.width() - 40)),
+                min(h, max(240, area.height() - 40)))
+
     def resize_to(w, h, min_w, min_h):
         """Move the window to the size a stage needs.
 
@@ -1915,8 +1965,30 @@ def main():
         clamped to the old one and simply does not shrink -- true of GTK and
         true of Qt, and the same trap arbor's roll-up hits.
         """
+        w, h = on_screen(w, h)
+        min_w, min_h = on_screen(min_w, min_h)
         window.setMinimumSize(min_w, min_h)
         window.resize(w, h)
+        keep_on_screen()
+
+    def keep_on_screen():
+        """Nudge the window back inside the display if a resize pushed it out.
+
+        A window that grows from the bar to the results grid keeps its top-left
+        corner, so on a small screen the growth all happens off the bottom and
+        right. There is no titlebar to drag it back by -- the page is the drag
+        handle, and the part of the page you would grab may be the part that is
+        now off the screen.
+        """
+        screen = app.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        frame = window.frameGeometry()
+        x = min(max(frame.x(), area.x()), area.x() + area.width() - frame.width())
+        y = min(max(frame.y(), area.y()), area.y() + area.height() - frame.height())
+        if (x, y) != (frame.x(), frame.y()):
+            window.move(x, y)
 
     # host: the window is no longer cut to a rounded shape on every resize --
     # it is transparent and the page draws its own corners. The size-allocate
@@ -2924,9 +2996,21 @@ def main():
 
     guard.newConnection.connect(on_second_instance)
 
+    # Sized and centred before it is shown, so it does not appear at one size
+    # and jump to another. GTK centred by asking the window manager; Qt is
+    # told where, which is also the only way it happens on Windows.
+    resize_to(BAR_W, BAR_H, BAR_MIN_W, BAR_MIN_H)
+    _area = app.primaryScreen().availableGeometry() if app.primaryScreen() \
+        else None
+    if _area is not None:
+        window.move(_area.x() + (_area.width() - window.width()) // 2,
+                    _area.y() + (_area.height() - window.height()) // 2)
+
     window.show()
-    print("scanner: window open at %dx%d, prgname %s"
-          % (BAR_W, BAR_H, PRGNAME), flush=True)
+    print("scanner: window open at %dx%d on a %s screen, prgname %s"
+          % (window.width(), window.height(),
+             ("%dx%d" % (_area.width(), _area.height())) if _area else "?",
+             PRGNAME), flush=True)
     app.exec()
     print("scanner: closed cleanly", flush=True)
 
@@ -2955,6 +3039,7 @@ def single_instance():
 
 
 if __name__ == "__main__":
+    setup_output()
     # `--harvest` fills the theme cache and exits. It is a quarter of an hour
     # of network and it must never be something the window waits on, so it is
     # its own run rather than a startup step. `--harvest 200` shortens it.

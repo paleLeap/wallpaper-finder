@@ -1,35 +1,13 @@
 # Wallpaper Finder
 
-A small desktop window that searches several wallpaper sites at once, shows you
-cheap thumbnails, and downloads only the ones you tick.
+Searches several wallpaper sites at once, shows you small previews, and
+downloads only the ones you tick. Also does GIFs.
 
-Pick **Images** or **GIFs**, then your sources and themes, set a minimum size
-and a main colour if you want them, and say how many to find. It fills a grid with previews as they arrive,
-each labelled with its real resolution. Tick the ones you like, press **Submit
-selections**, and only those are downloaded at full size — into a folder it
-asks you about.
-
-Runs on **Linux and Windows**.
-
-There's a **?** button in the top corner, next to minimize and close, if you
-want the short version in the window itself.
-
-## What's in this folder
-
-    scan, scan.cmd, scan-quiet.cmd   what you run
-    README.md                        this
-    program/                         the program and everything it needs
-
-Everything else lives in `program/` — the code, the interface, the theme list,
-the example config files, and anything the program writes while it runs. It
-never writes outside that folder, except the wallpapers themselves.
+Runs on Linux and Windows.
 
 ## Install
 
-You need **Python 3.9 or newer**. Everything else is one package — PySide6,
-which is Qt: the window, the browser engine the interface is drawn in, and the
-painter behind the placeholder previews. It's a big download (~250 MB) because
-a whole Chromium comes with it. Nothing else is required.
+You need Python 3.9 or newer. Everything else is one package.
 
 **Linux**
 
@@ -50,162 +28,56 @@ program\.venv\Scripts\pip install -r program\requirements.txt
 scan.cmd
 ```
 
-(No git? Use the green **Code** button on GitHub → Download ZIP, unpack it, and
-run the same commands inside the folder.)
+No git? Green **Code** button above → Download ZIP, unpack, run the same
+commands inside the folder.
 
-`scan` and `scan.cmd` both keep a console, which is where the program says what
-it did — worth having the first few times. `scan-quiet.cmd` starts it with no
-console, which is what a Windows shortcut should point at: right-click it →
-**Send to** → **Desktop (create shortcut)**.
+The one package is PySide6 (~250 MB — a whole browser engine comes with it).
 
-On Linux, for an application-menu entry, edit `program/wallpaper-finder.desktop`
-so `Exec=` points at this folder's `program/launch.sh`, then copy it to
-`~/.local/share/applications/`.
+## Use
 
-Pressing a menu entry or shortcut twice raises the open window instead of
-starting a second copy — two scanners would be two searches writing into one
-record.
+1. Choose **Images** or **GIFs**.
+2. Tick the sources you want. Each card says what it is and what it needs.
+3. Pick themes, or type your own words. Set a minimum size and a colour if you
+   want them — **Specific size…** takes exact dimensions, for a banner or an
+   ultrawide.
+4. **Search**, say how many, and watch the grid fill.
+5. Tick the good ones and press **Submit selections**. It asks which folder to
+   put them in, then downloads those at full size.
 
-## The sources
+**Stop** pauses; you can only submit while it's paused. The **?** in the corner
+explains the program in three sentences. Nothing is downloaded at full size
+until you tick it.
 
-Only sources the program can actually search are listed, and each card says
-what it is and what it needs. A source that couldn't be made to work without
-editing the code isn't shown at all, greyed out or otherwise — so nothing on
-that panel is a dead end.
+## Keys
 
-**Images**
+wallhaven and Wikimedia Commons need nothing at all. Pexels and GIPHY need a
+free key — click the source and a window opens explaining why, with a link to
+the sign-up page and a box to paste the key into. That's all there is to it.
 
-| Source | Needs |
-|---|---|
-| **wallhaven** | Nothing. No account, no key. The biggest pool — about 59,000 at 4K or better |
-| **wallhaven · loved** | Nothing. The same wallpapers, ordered by how many people kept them |
-| **Wikimedia Commons** | Nothing, but see below. Big files (5–30 MB) and rarely 16:9 |
-| **Pexels** | A free key. Register at https://www.pexels.com/api/ and put `pexels = <your key>` in `program/keys.txt` |
+Commons works better if you put an email address or a URL in
+`program/contact.txt` (copy `contact.txt.example`). Wikimedia sends roughly
+twice as many previews to a tool that says how to reach its owner.
 
-**GIFs**
+## Where things go
 
-| Source | Needs |
-|---|---|
-| **GIPHY** | A free key. Create one at https://developers.giphy.com/ — instant — and put `giphy = <your key>` in `program/keys.txt` |
+- Wallpapers go to the folder you choose when you save. It remembers it.
+- Everything else stays in `program/` — previews, the log, your keys, and the
+  record of what you've been shown.
+- It won't offer you the same picture twice, or anything already in your
+  folder. **Forget what I've seen** clears that.
+- It saves wallpapers. It doesn't set them — point whatever changes your
+  desktop at the folder.
 
-**A source that needs a key says so, and takes it.** Click any source that
-isn't working and a window opens explaining why it isn't — what the site
-actually answers without a key, and what the key costs and limits you to. There
-is a button that opens the sign-up page and a box to paste the key into. It's
-written into `program/keys.txt` (created if it isn't there, and set readable
-only by you), and the source starts working immediately — no restart, no
-editing files by hand. The program never prints a key; the log records which
-source was given one and how long it was, nothing more.
+## If something's wrong
 
-Switching to GIFs swaps the sizes too. A GIF is usually 200 to 500 pixels
-wide, so the 4K floor that suits a wallpaper would return nothing at all; the
-GIF list runs Any size / 480 / 720 / 1080 wide and starts at Any. Everything
-else works the same — themes, previews, ticking, the offered record — and GIFs
-are saved as `giphy-<id>.gif` into whichever folder you choose.
+Run `./scan` (or `scan.cmd`) from a terminal rather than a shortcut. The
+program narrates what it's doing, and the last few lines usually say it
+outright. On Windows, `scan-quiet.cmd` writes the same thing to
+`program/cache/launch.log`.
 
-Two things worth knowing about GIPHY. Its free key allows **100 searches an
-hour and 1,000 a day**; this program paces well inside that, since one search
-costs a call or two (a page is fifty GIFs), but it is their limit. And the
-previews animate, because a still frame of a GIF tells you nothing.
+Two known things: the rounded corners need a compositor, which Windows always
+has and most Linux desktops run; and the window is drawn at real pixel sizes,
+so on a very high-DPI screen set `WALLSCAN_SCALE=1.5` to make it bigger.
 
-**Commons and `contact.txt`.** Wikimedia refuses most Commons previews unless
-the request says how to reach whoever is running the tool — measured here as 8
-of 8 previews succeeding with a contact and 4 of 8 without, same search, same
-pacing. Copy `program/contact.txt.example` to `program/contact.txt` and put one
-line in it: an email address or a URL. It goes in the request header to
-Wikimedia and wallhaven, nowhere else. Commons works without it, just half as
-well.
-
-You can still edit `program/keys.txt` by hand if you'd rather — the key window
-writes the same file, reusing the commented placeholder line if it's still
-there. `keys.txt` and `contact.txt` are both gitignored.
-
-*Not included, and why:* Unsplash needs a key reviewed by hand over 5–10 working
-days; Pixabay's free key only downloads 1280px however big the picture actually
-is; Reddit needs a registered app. None of the three has any code behind it
-here, so all three would be buttons that could only ever say no.
-
-## Sizes
-
-The **Minimum size** dropdown is a floor: Any size, Full HD, 1440p, 4K
-(the default), 5K, 8K.
-
-**Specific size…** is the last entry, and it's different — it's exactly that
-size, not that size or bigger, which is what you want for a banner or an
-ultrawide. Type a width and a height. wallhaven answers this properly: 90,858
-wallpapers at exactly 1920×1080, 2,230 at exactly 3440×1440. Commons and Pexels
-have no such search, so they're filtered here and will rarely match at all —
-and a size nobody uploads returns nothing from anywhere.
-
-## Where they get saved
-
-Pressing **Submit selections** asks where to put them, with the last folder you
-chose already filled in — so the usual answer is to press Save. The button
-showing the path opens your system's own folder chooser. The folder is created
-if it isn't there, files already in it are never overwritten, and the choice is
-remembered in `program/savedir.txt`.
-
-It saves wallpapers. It does not set them — point whatever already rotates your
-desktop at the folder you chose.
-
-## What else it does
-
-- **Only large wallpapers**, by whatever floor you set.
-- **Previews first.** A preview is 14–32 KB against roughly 4 MB for the real
-  file, so browsing a hundred candidates costs a couple of megabytes.
-- **It remembers what it showed you**, in `program/offered.txt`, so it stops
-  repeating itself. **Forget what I've seen** clears it; so does deleting the
-  file.
-- **It won't re-download what you have.** The check is a listing of your save
-  folder, and it re-reads that folder when you change it.
-- **Safe searches only.** wallhaven is queried as General / SFW.
-
-**GIFs come from GIPHY and nowhere else here**, and that is measured rather
-than assumed. wallhaven holds JPEG and PNG only — a page of results came back
-14 JPEG, 10 PNG, no GIFs at all. Pexels is photographs. Commons does have GIFs
-and they are searchable, but they are lab animations and diagrams rather than
-anything anyone wants. Tenor, the other big GIF library, is not an option for
-anybody: Google stopped issuing Tenor API keys in January 2026 and cut off
-third-party access entirely on 30 June 2026.
-
-Note that a GIF set as an ordinary desktop wallpaper does not move, on either
-system. Animated wallpapers need a different kind of program.
-
-## Settings
-
-Environment variables, all optional:
-
-- `WALLSCAN_SCALE` — makes the whole window bigger, e.g. `1.5`. The layout is
-  authored in real pixels and draws at 1:1 by default, which on a high-DPI
-  laptop can come out small.
-- `WALLSCAN_LIBRARY` — the save folder offered before you've ever chosen one
-  (default `~/Pictures/wallpapers`)
-- `WALLSCAN_OFFERED` — where the offered record lives
-
-`python program/scanner.py --harvest` refreshes the theme list from the sources.
-It takes about fifteen minutes, and the program does it by itself in the
-background when the shipped list is over 30 days old, so you shouldn't need to.
-
-## A note on where this came from
-
-This was built for one particular desktop — a 4K panel running openbox and
-picom — and then ported to run on Windows too. The port swapped the window
-underneath it from GTK to Qt, because the browser engine the Linux version used
-(WebKit2GTK) doesn't exist on Windows at all. The interface itself is the same
-page on both.
-
-One consequence worth knowing: the rounded corners need a compositor. Windows
-always has one. Linux needs picom or similar running, which most desktops do —
-without one, the corners come out black instead of transparent.
-
-**The GIPHY source has not been run against a live key.** Creating accounts
-isn't something I'll do on your behalf, so it is written from GIPHY's own API
-documentation and verified as far as it can be without one: a keyless call
-reaches their API and comes back a clean 401, which the program reports and
-carries on from rather than falling over. The first real search with a key in
-place is the test that hasn't happened.
-
-**The Linux side has been run and tested; the Windows side has been written but
-not yet run on Windows.** If you're the first to try it there and something is
-wrong, run `scan.cmd` rather than the quiet one and open an issue with what it
-printed.
+*Tested on Linux at four screen sizes. Written and checked for Windows but not
+yet run there — if you're first, the terminal will tell you what broke.*
