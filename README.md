@@ -3,8 +3,8 @@
 A small desktop window that searches several wallpaper sites at once, shows you
 cheap thumbnails, and downloads only the ones you tick.
 
-Pick your sources and themes, set a minimum size and a main colour if you want
-them, and say how many to find. It fills a grid with previews as they arrive,
+Pick **Images** or **GIFs**, then your sources and themes, set a minimum size
+and a main colour if you want them, and say how many to find. It fills a grid with previews as they arrive,
 each labelled with its real resolution. Tick the ones you like, press **Submit
 selections**, and only those are downloaded at full size — into a folder it
 asks you about.
@@ -73,12 +73,31 @@ what it is and what it needs. A source that couldn't be made to work without
 editing the code isn't shown at all, greyed out or otherwise — so nothing on
 that panel is a dead end.
 
+**Images**
+
 | Source | Needs |
 |---|---|
 | **wallhaven** | Nothing. No account, no key. The biggest pool — about 59,000 at 4K or better |
 | **wallhaven · loved** | Nothing. The same wallpapers, ordered by how many people kept them |
 | **Wikimedia Commons** | Nothing, but see below. Big files (5–30 MB) and rarely 16:9 |
 | **Pexels** | A free key. Register at https://www.pexels.com/api/ and put `pexels = <your key>` in `program/keys.txt` |
+
+**GIFs**
+
+| Source | Needs |
+|---|---|
+| **GIPHY** | A free key. Create one at https://developers.giphy.com/ — instant — and put `giphy = <your key>` in `program/keys.txt` |
+
+Switching to GIFs swaps the sizes too. A GIF is usually 200 to 500 pixels
+wide, so the 4K floor that suits a wallpaper would return nothing at all; the
+GIF list runs Any size / 480 / 720 / 1080 wide and starts at Any. Everything
+else works the same — themes, previews, ticking, the offered record — and GIFs
+are saved as `giphy-<id>.gif` into whichever folder you choose.
+
+Two things worth knowing about GIPHY. Its free key allows **100 searches an
+hour and 1,000 a day**; this program paces well inside that, since one search
+costs a call or two (a page is fifty GIFs), but it is their limit. And the
+previews animate, because a still frame of a GIF tells you nothing.
 
 **Commons and `contact.txt`.** Wikimedia refuses most Commons previews unless
 the request says how to reach whoever is running the tool — measured here as 8
@@ -131,11 +150,16 @@ desktop at the folder you chose.
   folder, and it re-reads that folder when you change it.
 - **Safe searches only.** wallhaven is queried as General / SFW.
 
-**No GIFs.** wallhaven holds JPEG and PNG only — measured, not assumed — and
-Pexels is photographs. Commons does have GIFs and they are searchable, but they
-are lab animations and diagrams rather than anything you'd put on a desktop.
-Animated wallpapers need a different kind of program anyway; a GIF set as an
-ordinary desktop wallpaper doesn't move.
+**GIFs come from GIPHY and nowhere else here**, and that is measured rather
+than assumed. wallhaven holds JPEG and PNG only — a page of results came back
+14 JPEG, 10 PNG, no GIFs at all. Pexels is photographs. Commons does have GIFs
+and they are searchable, but they are lab animations and diagrams rather than
+anything anyone wants. Tenor, the other big GIF library, is not an option for
+anybody: Google stopped issuing Tenor API keys in January 2026 and cut off
+third-party access entirely on 30 June 2026.
+
+Note that a GIF set as an ordinary desktop wallpaper does not move, on either
+system. Animated wallpapers need a different kind of program.
 
 ## Settings
 
@@ -163,6 +187,13 @@ page on both.
 One consequence worth knowing: the rounded corners need a compositor. Windows
 always has one. Linux needs picom or similar running, which most desktops do —
 without one, the corners come out black instead of transparent.
+
+**The GIPHY source has not been run against a live key.** Creating accounts
+isn't something I'll do on your behalf, so it is written from GIPHY's own API
+documentation and verified as far as it can be without one: a keyless call
+reaches their API and comes back a clean 401, which the program reports and
+carries on from rather than falling over. The first real search with a key in
+place is the test that hasn't happened.
 
 **The Linux side has been run and tested; the Windows side has been written but
 not yet run on Windows.** If you're the first to try it there and something is

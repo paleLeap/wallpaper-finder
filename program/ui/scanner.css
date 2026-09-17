@@ -212,6 +212,39 @@ html, body {
 }
 #themesearch:focus { border-color: var(--accent-hi); }
 
+/* ---- images or GIFs ---- */
+
+/* A segmented pair rather than a third dropdown. There are two of them and
+   they are the first decision made in this window; a menu to open for a choice
+   between two things is a menu too many. */
+#kindpick {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 9px;
+  background: var(--ground);
+  border: 1px solid var(--edge);
+  border-radius: 17px;
+}
+.kind {
+  flex: 1;
+  height: 28px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background var(--anim) var(--ease), color var(--anim) var(--ease);
+}
+.kind:hover { color: var(--text); }
+.kind.on {
+  background: var(--accent);
+  color: var(--text);
+}
+
 /* ---- a source, and what it needs ---- */
 
 /* The sources list runs down rather than across. There are four of them, each

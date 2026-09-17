@@ -171,14 +171,17 @@ def save_savedir(path):
 # at the very moment it went from eighteen entries to hundreds. Seen on screen
 # 2026-08-26. At 360 they have 220px, which is more room than they started
 # with. It is still only the opening size -- the window resizes.
-# 545 rather than the 360 it was, and the extra 185 is not padding. The
+# 585 rather than the 360 it was, and the extra 225 is not padding. The
 # sources are cards now -- a name, what the source is, and what it needs --
 # and at 360 only two of the four were on screen, so Commons and Pexels
 # existed only for whoever thought to scroll a pane that does not look like it
 # scrolls. Seen on screen 2026-09-16, not reasoned about, and 470 was tried
-# first and still cut the fourth card off, and 520 clipped its last line. The themes list
+# first and still cut the fourth card off, 520 clipped its last line, and
+# 545 stopped fitting once the Images/GIFs toggle took its 37px off the top.
+# Every one of those was the same defect found the same way -- the self-test
+# measures the list against the pane and says so. The themes list
 # gains the same 110px, which it can always use.
-BAR_W, BAR_H = 1180, 545          # stage one: sources, themes, size, colour
+BAR_W, BAR_H = 1180, 585          # stage one: sources, themes, size, colour
 BAR_MIN_W, BAR_MIN_H = 820, 360
 ASK_W, ASK_H = 360, 196           # stage two: "How many?"
 RESULTS_W, RESULTS_H = 1760, 1180  # stage three: the grid
@@ -238,6 +241,18 @@ def _keys():
 KEYS = _keys()
 
 
+# Two kinds of search, because a GIF is not a wallpaper and the difference
+# runs deeper than the file extension. A GIF is 200 to 500 pixels wide, so the
+# 4K floor that is right for a wallpaper returns nothing at all; the sources
+# that hold them are not the sources that hold wallpapers; and neither GIF
+# source reports a colour. Each kind therefore carries its own sources, its own
+# sizes and its own default, and the panel swaps when you switch.
+KINDS = [
+    {"id": "images", "name": "Images"},
+    {"id": "gifs", "name": "GIFs"},
+]
+DEFAULT_KIND = "images"
+
 SOURCES = [
     # One line each, and they are short on purpose: four cards have to fit the
     # panel without scrolling, and a panel that hides half its sources behind
@@ -259,7 +274,23 @@ SOURCES = [
      "what": "A free stock photo library. Landscapes and cities mostly.",
      "needs": "Needs a free key from pexels.com/api, put in keys.txt.",
      "why": "needs a free key in keys.txt"},
+
+    # ---- GIFs ----
+    {"id": "giphy", "name": "GIPHY", "kind": "gifs",
+     "ready": "giphy" in KEYS,
+     "what": "The big GIF library. Reactions, loops, clips.",
+     "needs": "Needs a free key from developers.giphy.com — instant, but "
+              "rate limited to 100 searches an hour.",
+     "why": "needs a free key in keys.txt"},
 ]
+
+# Everything without a kind of its own is a wallpaper source.
+for _s in SOURCES:
+    _s.setdefault("kind", "images")
+
+
+def sources_for(kind):
+    return [dict(s) for s in SOURCES if s["kind"] == (kind or DEFAULT_KIND)]
 
 # Unsplash, Pixabay and Reddit used to be listed here, greyed out, explaining
 # themselves. They are gone, and the rule that removed them is his: a source
@@ -277,6 +308,12 @@ SOURCES = [
 #                worse than not having the source.
 #   Reddit       a registered app rather than a key, and the plain JSON feed
 #                answers 403 without one (2026-08-22).
+#
+# Tenor is the other GIF library and is not here either, for a harder reason
+# than a key: Google stopped issuing Tenor API keys on 13 January 2026 and cut
+# off third-party access entirely on 30 June 2026 -- the shutdown that broke
+# the GIF pickers in Discord, WhatsApp and X. There is no key to go and get,
+# so by the same rule it is not on the panel. GIPHY is the one that is left.
 
 # Which site a pool belongs to. This is what a saved file is named after and
 # what "do I already have this" is keyed on -- NOT the pool.
@@ -289,7 +326,7 @@ SOURCES = [
 # would have been re-offered wallpapers he already owned.
 SITE = {
     "wallhaven": "wallhaven", "wallhaven-fav": "wallhaven",
-    "commons": "commons", "pexels": "pexels",
+    "commons": "commons", "pexels": "pexels", "giphy": "giphy",
 }
 
 # The eighteen words this program shipped with. They are no longer the theme
@@ -717,8 +754,13 @@ API_MIN_GAP = 1.5
 #              remaining-count is both safe and usable
 #   commons    no published number; held to the same pace as wallhaven, which
 #              is far below anything they would notice
+# GIPHY's free key allows 100 searches an hour, which is the tightest limit
+# of anything here -- 36 seconds a call if it were spent evenly. It is not
+# spent evenly: a page is 50 GIFs, so an ordinary search costs one or two
+# calls. 3 seconds keeps a long session well inside it without making the
+# grid crawl.
 SOURCE_GAP = {"wallhaven": 1.5, "wallhaven-fav": 1.5, "commons": 1.5,
-              "pexels": 2.0}
+              "pexels": 2.0, "giphy": 3.0}
 
 # Stop using a source when its own remaining-count gets this low, rather than
 # discovering the limit by being refused. His words: hardwire it so I do not
@@ -766,8 +808,32 @@ SIZES = [
     {"id": "exact", "name": "Specific size…", "atleast": "", "w": 0,
      "exact": True},
 ]
+# GIFs live at a completely different scale. A 4K floor on a GIF search
+# returns nothing, so this list starts at "any" and that is also its default:
+# most of GIPHY is between 200 and 500 pixels wide.
+GIF_SIZES = [
+    {"id": "any", "name": "Any size", "atleast": "", "w": 0},
+    {"id": "480w", "name": "480 wide or more", "atleast": "", "w": 480},
+    {"id": "720w", "name": "720 wide or more", "atleast": "", "w": 720},
+    {"id": "1080w", "name": "1080 wide or more", "atleast": "", "w": 1080},
+]
+
 DEFAULT_SIZE = "3840x2160"
+GIF_DEFAULT_SIZE = "any"
+# The exact-size entry is shared: "1920 by 480 and nothing else" means the
+# same thing whichever kind is being searched.
+EXACT_ENTRY = [z for z in SIZES if z.get("exact")]
+GIF_SIZES = GIF_SIZES + EXACT_ENTRY
+
 SIZE_BY_ID = {z["id"]: z for z in SIZES}
+SIZE_BY_ID.update({z["id"]: z for z in GIF_SIZES})
+
+
+def sizes_for(kind):
+    """The size list and its default, for one kind of search."""
+    if kind == "gifs":
+        return GIF_SIZES, GIF_DEFAULT_SIZE
+    return SIZES, DEFAULT_SIZE
 
 
 def size_or_default(size):
@@ -833,7 +899,7 @@ USER_AGENT = ("wallpaper-scanner/0.1 (%s)"
 # serves previews off a CDN and does not mind; Wikimedia does. Only the search
 # calls were paced before, which is why a Commons page of 24 thumbnails
 # arrived as a burst and got most of itself refused.
-THUMB_GAP = {"commons": 0.7, "wallhaven": 0.0}
+THUMB_GAP = {"commons": 0.7, "wallhaven": 0.0, "giphy": 0.2}
 
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 
@@ -1017,7 +1083,7 @@ def already_have(where=None):
     pattern = re.compile(r"^(%s)-([A-Za-z0-9]+)$" % known)
     for name in os.listdir(where):
         stem, ext = os.path.splitext(name)
-        if ext.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+        if ext.lower() not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
             continue
         match = pattern.match(stem)
         if match:
@@ -1266,8 +1332,100 @@ def pexels_rows(query, cursor, pool="pexels", colour=None, size=None):
     return rows, nxt
 
 
+GIPHY_SEARCH = "https://api.giphy.com/v1/gifs/search"
+GIPHY_TRENDING = "https://api.giphy.com/v1/gifs/trending"
+
+# GIPHY's renditions, and why these two.
+#
+# `fixed_width` is 200px across and a few tens of kilobytes -- the same bargain
+# every other source here is preview-first for, and it animates, which a still
+# frame of a GIF would not. `original` is the real file at the real size, and
+# it is the only rendition whose dimensions match what the API reports.
+#
+# Load-bearing: GIPHY reports width and height as STRINGS ("480", not 480).
+# Compared against a number, every one of them would be "not big enough" and a
+# size filter would silently empty the grid. They are converted on the way in.
+GIPHY_THUMB = "fixed_width"
+
+# 50 is the most a free key may ask for, and a free key is the only kind a
+# friend can get instantly.
+GIPHY_PAGE = 50
+
+# `g` is GIPHY's own all-ages rating. This program searches wallhaven as
+# General/SFW and there is no reason for the GIF half to be laxer.
+GIPHY_RATING = "g"
+
+
+def _giphy_int(value):
+    """One of GIPHY's stringly-typed numbers, as a number."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def giphy_rows(query, cursor, pool="giphy", colour=None, size=None):
+    """One page of GIPHY, normalised. Returns (rows, next cursor).
+
+    Trending when there is nothing typed, exactly as Pexels falls back to its
+    curated list: GIPHY's search endpoint wants a term and answers an empty one
+    with an empty page rather than with everything.
+
+    GIPHY reports no colour at all -- there is no average-colour field on a GIF
+    object, and nothing in the search parameters to filter by one. A rank of
+    None means "cannot be judged on colour", which is the same answer Commons
+    gives and passes through for the same reason: dropping every GIF from a
+    colour search would make the colour dropdown silently empty the grid.
+    """
+    offset = cursor.get("offset", 0)
+    want = size_or_default(size)
+    min_w = want["w"]
+    params = {"api_key": KEYS.get("giphy", ""), "limit": str(GIPHY_PAGE),
+              "offset": str(offset), "rating": GIPHY_RATING}
+    if query:
+        params["q"] = query[:50]        # their documented maximum
+        url = GIPHY_SEARCH
+    else:
+        url = GIPHY_TRENDING
+    payload = json.loads(fetch(url + "?" + urllib.parse.urlencode(params),
+                               limits_for="giphy").decode("utf-8"))
+    rows = []
+    for gif in payload.get("data") or []:
+        images = gif.get("images") or {}
+        thumb = images.get(GIPHY_THUMB) or {}
+        full = images.get("original") or {}
+        if not thumb.get("url") or not full.get("url"):
+            continue
+        width = _giphy_int(full.get("width"))
+        height = _giphy_int(full.get("height"))
+        if width < min_w:
+            continue
+        if want.get("exact") and (width != want["w"] or height != want["h"]):
+            continue
+        rows.append({
+            "ident": str(gif.get("id")),
+            "source": pool,
+            "w": width,
+            "h": height,
+            "thumb": thumb["url"],
+            "full": full["url"],
+            "bytes": _giphy_int(full.get("size")) or None,
+            "crank": None,
+        })
+    # GIPHY pages by offset and stops at 4999, which it will not say; asking
+    # past it answers an error rather than an empty page, so the end is worked
+    # out here instead.
+    page = payload.get("pagination") or {}
+    nxt = offset + GIPHY_PAGE
+    total = page.get("total_count")
+    if not payload.get("data") or nxt > 4999 or (
+            total is not None and nxt >= total):
+        return rows, None
+    return rows, {"offset": nxt}
+
+
 # Which function fetches which source. A source with no entry here is one the
-# window can list and cannot search -- which is what a disabled pill is.
+# window can list and cannot search -- which is what a disabled card is.
 def _pool(fn, pool):
     """Bind a pool to its adapter. A plain lambda in the dict below would close
     over the loop variable and every entry would fetch the last pool."""
@@ -1280,13 +1438,17 @@ def _adapter(name):
         return wallhaven_rows
     if name.startswith("commons"):
         return commons_rows
+    if name.startswith("giphy"):
+        return giphy_rows
     return pexels_rows
 
 
 # A source with no key gets no entry, so it can be listed and not searched.
+# A source whose key is missing gets no entry, so it can be listed and not
+# searched.
 FETCHERS = {name: _pool(_adapter(name), name)
             for name in SITE
-            if name != "pexels" or "pexels" in KEYS}
+            if name not in ("pexels", "giphy") or name in KEYS}
 
 
 def load_offered():
@@ -1574,6 +1736,10 @@ def main():
              "size_before_roll": None, "stage": "bar", "running": False,
              "want": 0, "found": 0, "index": 0, "timer": None,
              "sources": [], "themes": [], "typed": "", "colour": "",
+             # Images or GIFs. It decides which sources are on the panel and
+             # which sizes the dropdown offers, so it is the one setting that
+             # changes what the other two can say.
+             "kind": DEFAULT_KIND,
              # The minimum resolution, as an id from SIZES. 4K unless the
              # dropdown says otherwise.
              "size": DEFAULT_SIZE,
@@ -1708,6 +1874,29 @@ def main():
               flush=True)
 
     # ---- stage one: what to search -------------------------------------
+
+    def send_kind(kind):
+        """Hand the page the sources and sizes for one kind of search.
+
+        Both lists go together and neither is any use without the other: the
+        GIF sources with the wallpaper sizes would be a 4K floor over a library
+        whose widest entry is 500 pixels, which is a search that can only come
+        back empty.
+        """
+        state["kind"] = kind
+        sizes, default = sizes_for(kind)
+        say("scanner_setSources", sources_for(kind))
+        say("scanner_setSizes", sizes, default)
+        state["size"] = default
+
+    def on_kind(payload):
+        kind = payload if payload in [k["id"] for k in KINDS] else DEFAULT_KIND
+        send_kind(kind)
+        live = [s["id"] for s in sources_for(kind) if s["ready"]]
+        print("scanner: looking for %s — %d source%s ready (%s)"
+              % (kind, len(live), "" if len(live) == 1 else "s",
+                 ", ".join(live) if live else "none: see the cards"),
+              flush=True)
 
     def on_search(raw):
         """SEARCH was pressed. Carry the picks forward and ask how many."""
@@ -2285,7 +2474,7 @@ def main():
                 break
             path = urllib.parse.urlparse(row["full"]).path
             ext = os.path.splitext(path)[1].lower()
-            if ext not in (".jpg", ".jpeg", ".png", ".webp"):
+            if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
                 ext = ".jpg"
             # The site, never the pool. wallhaven's shuffled and loved pools
             # are the same wallpapers in a different order, and the same
@@ -2506,6 +2695,7 @@ def main():
         "stopresume": on_stopresume,
         "submit": on_submit,
         "choosedir": on_choosedir,
+        "kind": on_kind,
         "askdiscard": on_askdiscard,
         "discard": on_discard,
         "keepgoing": on_keepgoing,
@@ -2525,17 +2715,17 @@ def main():
         if not ok:
             print("scanner: the page failed to load", flush=True)
             return
-        say("scanner_setSources", SOURCES)
+        say("scanner_setKinds", KINDS, DEFAULT_KIND)
+        send_kind(DEFAULT_KIND)
         say("scanner_setThemes", THEMES)
         say("scanner_setColours", COLOURS)
-        say("scanner_setSizes", SIZES, DEFAULT_SIZE)
         say("scanner_setSaveDir", pretty_path(state["savedir"]),
             state["savedir"])
         say("scanner_setSeenCount", len(offered))
         age = theme_cache_age_days()
         print("scanner: page loaded, %d sources, %d themes and %d colours "
               "delivered (themes %s)"
-              % (len(SOURCES), len(THEMES), len(COLOURS),
+              % (len(sources_for(DEFAULT_KIND)), len(THEMES), len(COLOURS),
                  ("harvested %d days ago" % int(age)) if age is not None
                  else "are the built-in starters — no cache yet"), flush=True)
         start_theme_refresh()

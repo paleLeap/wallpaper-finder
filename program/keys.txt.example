@@ -1,20 +1,21 @@
-# API keys for the sources that need one. Rename this file to keys.txt.
+# API keys for the two sources that need one. Rename this file to keys.txt.
 #
 # One `name = value` a line. Nothing in this program ever prints a key, and
-# keys.txt is in .gitignore so it cannot reach the Mantle repo.
+# keys.txt is in .gitignore so it cannot reach a repository.
 #
-# Sign up (all free):
-#   flickr      https://www.flickr.com/services/apps/create/
-#   unsplash    https://unsplash.com/developers
-#   pexels      https://www.pexels.com/api/
-#   pixabay     https://pixabay.com/api/docs/
-#   smithsonian https://api.data.gov/signup/
-#   reddit      https://www.reddit.com/prefs/apps   (an app, not just a key)
+# Only these two do anything. A key for anything else would sit here unread --
+# there is no code in this program that could use it, which is why no other
+# source is on the panel at all.
 #
-# Only fill in the ones you have. A source with no key is not offered, and
-# says so on its own button rather than failing when you press Search.
+#   pexels   https://www.pexels.com/api/         photographs, free, instant
+#   giphy    https://developers.giphy.com/       GIFs, free, instant
+#
+# GIPHY's free key is rate limited to 100 searches an hour and 1,000 a day.
+# This program paces itself well inside that -- one search is a call or two,
+# because a page is fifty GIFs -- but it is their limit, not ours.
+#
+# Leave a line commented out and that source is listed as needing a key rather
+# than failing when you press Search.
 
-# flickr =
-# unsplash =
 # pexels =
-# pixabay =
+# giphy =

@@ -98,6 +98,28 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 /* Built from what the host hands over rather than written into the markup:
  * phase two replaces the theme list with one pulled from each site's own
  * settings, and that must not mean editing the page. */
+/* Images or GIFs. Pressing one asks the host to re-send both the sources and
+ * the sizes: this side does not know which sources hold GIFs, and inventing an
+ * answer here is how the two halves drift apart. */
+window.scanner_setKinds = (list, initial) => {
+  const box = document.getElementById('kindpick');
+  box.innerHTML = '';
+  list.forEach((k) => {
+    const b = document.createElement('button');
+    b.className = 'kind' + (k.id === initial ? ' on' : '');
+    b.dataset.id = k.id;
+    b.textContent = k.name;
+    b.addEventListener('click', () => {
+      if (b.classList.contains('on')) return;   /* already there */
+      [...box.querySelectorAll('.kind')].forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      send('kind', k.id);
+      note('looking for ' + k.id);
+    });
+    box.appendChild(b);
+  });
+};
+
 const TICK =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"' +
   ' stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
@@ -254,9 +276,16 @@ let chosenSize = '';
 let exactW = 3440;
 let exactH = 1440;
 
+/* The size list currently on offer. It is replaced wholesale when the kind
+ * changes -- a GIF search and a wallpaper search do not share a floor -- so
+ * anything that needs to name the current choice reads these rather than a
+ * list captured when the page loaded. */
+let sizeList = [];
+
 const sizePanel = document.getElementById('sizepanel');
 const exactwBox = document.getElementById('exactw');
 const exacthBox = document.getElementById('exacth');
+const sizeLabel = document.getElementById('sizelabel');
 
 /* Digits only, the same rule as the how-many box. */
 [exactwBox, exacthBox].forEach((box) => {
@@ -266,43 +295,48 @@ const exacthBox = document.getElementById('exacth');
   });
 });
 
+/* What the label says once a specific size is in force. The host writes the
+ * same sentence its own way for the log; this one is for the button. */
+const exactLabel = () => exactW + ' × ' + exactH + ' exactly';
+
+const showSizeLabel = () => {
+  if (chosenSize === 'exact') { sizeLabel.textContent = exactLabel(); return; }
+  const now = sizeList.find((z) => z.id === chosenSize);
+  sizeLabel.textContent = now ? now.name : (sizeList[0] || {}).name || '';
+};
+
+/* These three are wired once, here, and not inside scanner_setSizes.
+ * setSizes runs again every time the kind changes, and listeners added there
+ * would stack: two switches and "Use this size" would fire three times. */
+const useExact = () => {
+  exactW = Math.max(1, parseInt(exactwBox.value, 10) || 1);
+  exactH = Math.max(1, parseInt(exacthBox.value, 10) || 1);
+  chosenSize = 'exact';
+  showSizeLabel();
+  sizePanel.hidden = true;
+  note('specific size ' + exactW + 'x' + exactH);
+};
+
+document.getElementById('sizeok').addEventListener('click', useExact);
+[exactwBox, exacthBox].forEach((box) => {
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') useExact();
+    if (e.key === 'Escape') document.getElementById('sizecancel').click();
+  });
+});
+
+/* Backing out leaves the size as it was before the panel opened, rather than
+ * half-applying a number nobody confirmed. */
+document.getElementById('sizecancel').addEventListener('click', () => {
+  sizePanel.hidden = true;
+  showSizeLabel();
+  note('specific size cancelled, still ' + sizeLabel.textContent);
+});
+
 window.scanner_setSizes = (list, initial) => {
+  sizeList = list;
   chosenSize = initial;
-  const label = document.getElementById('sizelabel');
-  const start = list.find((z) => z.id === initial) || list[0];
-  label.textContent = start.name;
-
-  /* What the label says once a specific size is in force. The host writes the
-   * same sentence its own way for the log; this one is for the button. */
-  const exactLabel = () => exactW + ' × ' + exactH + ' exactly';
-
-  const useExact = () => {
-    exactW = Math.max(1, parseInt(exactwBox.value, 10) || 1);
-    exactH = Math.max(1, parseInt(exacthBox.value, 10) || 1);
-    chosenSize = 'exact';
-    label.textContent = exactLabel();
-    sizePanel.hidden = true;
-    note('specific size ' + exactW + 'x' + exactH);
-  };
-
-  document.getElementById('sizeok').addEventListener('click', useExact);
-  [exactwBox, exacthBox].forEach((box) => {
-    box.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') useExact();
-      if (e.key === 'Escape') document.getElementById('sizecancel').click();
-    });
-  });
-
-  /* Backing out leaves the size as it was before the panel opened, rather
-   * than half-applying a number nobody confirmed. */
-  document.getElementById('sizecancel').addEventListener('click', () => {
-    sizePanel.hidden = true;
-    const back = list.find((z) => z.id === chosenSize);
-    label.textContent = chosenSize === 'exact' ? exactLabel()
-                      : (back ? back.name : start.name);
-    note('specific size cancelled, still ' + label.textContent);
-  });
-
+  showSizeLabel();
   makeDrop('sizedrop', 'sizemenu', list, initial, (o) => {
     if (o.exact) {
       /* The dropdown cannot answer this one -- it needs two numbers -- so it
@@ -317,7 +351,7 @@ window.scanner_setSizes = (list, initial) => {
       return;
     }
     chosenSize = o.id;
-    label.textContent = o.name;
+    showSizeLabel();
     note('minimum size ' + o.id);
   });
 };
@@ -779,6 +813,32 @@ if (SELFTEST === '1' || SELFTEST === 'live') {
       fails_forget.push('the size/colour strip is clipped: ' + pane.scrollHeight +
                         ' inside ' + pane.clientHeight);
     }
+
+    /* Images/GIFs. Both lists must swap together: the GIF sources with the
+     * wallpaper sizes would be a 4K floor over a library whose widest entry is
+     * about 500 pixels, which is a search that can only come back empty. */
+    const kinds = [...document.querySelectorAll('#kindpick .kind')];
+    note('selftest sees ' + kinds.length + ' kinds');
+    const gifs = kinds.find((k) => k.dataset.id === 'gifs');
+    press(gifs, 'GIFs');
+    await until('the GIF sources', () =>
+      [...document.querySelectorAll('#sourcelist .source')]
+        .some((el) => el.dataset.id === 'giphy'), 60);
+    const gifSources = [...document.querySelectorAll('#sourcelist .source')]
+      .map((el) => el.dataset.id);
+    note('selftest sees GIF sources: ' + gifSources.join(', '));
+    if (gifSources.includes('wallhaven')) {
+      fails_forget.push('switching to GIFs left the wallpaper sources up');
+    }
+    if (document.getElementById('sizelabel').textContent.indexOf('4K') >= 0) {
+      fails_forget.push('switching to GIFs left the 4K floor in place');
+    }
+    note('selftest sees the GIF size floor reading "' +
+         document.getElementById('sizelabel').textContent + '"');
+    press(kinds.find((k) => k.dataset.id === 'images'), 'Images again');
+    await until('the wallpaper sources back', () =>
+      [...document.querySelectorAll('#sourcelist .source')]
+        .some((el) => el.dataset.id === 'wallhaven'), 60);
 
     press(document.getElementById('sizebtn'), 'the size dropdown open');
     const sizes = [...document.querySelectorAll('#sizemenu .opt')];
