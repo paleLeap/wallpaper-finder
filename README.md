@@ -5,6 +5,10 @@ downloads only the ones you tick. Also does GIFs.
 
 Runs on Linux and Windows.
 
+> **On Windows? Don't download this page's code.** Get
+> [WallpaperFinder-Setup.exe](https://github.com/paleLeap/wallpaper-finder/releases/latest/download/WallpaperFinder-Setup.exe),
+> run it, done. The green **Code** button is the source, which needs Python.
+
 ## Install
 
 **Windows**
