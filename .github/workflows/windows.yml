@@ -1,0 +1,65 @@
+# Builds WallpaperFinder-Setup.exe on a Windows machine: freezes the program
+# with PyInstaller (no Python needed on the friend's PC), runs its own
+# self-test on the frozen copy, wraps it with Inno Setup, and on a v* tag
+# attaches the installer to a GitHub release.
+name: Windows installer
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -r program/requirements.txt pyinstaller
+
+      - name: Freeze
+        run: pyinstaller --noconfirm packaging/wallpaper-finder.spec
+
+      - name: Self-test the frozen program
+        shell: pwsh
+        run: |
+          $env:WALLSCAN_SELFTEST = "1"
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP\wfdata"
+          $env:WALLSCAN_LIBRARY = "$env:RUNNER_TEMP\wflib"
+          $p = Start-Process -FilePath "dist\Wallpaper Finder\Wallpaper Finder.exe" -PassThru
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Host "timed out after 3 minutes" }
+          $log = "$env:RUNNER_TEMP\wfdata\Wallpaper Finder\cache\launch.log"
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "no log at $log"; exit 1 }
+          if (-not (Select-String -Path $log -Pattern "SELF-TEST finished" -Quiet)) { exit 1 }
+
+      - name: Installer
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          if ($v -notmatch '^\d') { $v = "0.0.0" }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=$v" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WallpaperFinder-Setup
+          path: dist/WallpaperFinder-Setup.exe
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create ${{ github.ref_name }} dist/WallpaperFinder-Setup.exe
+          --title "Wallpaper Finder ${{ github.ref_name }}"
+          --notes "Windows: download WallpaperFinder-Setup.exe, run it, and Wallpaper Finder opens. No Python needed. Windows may say it protected your PC because the installer is not signed: choose More info, then Run anyway."

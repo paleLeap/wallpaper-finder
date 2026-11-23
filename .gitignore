@@ -10,3 +10,7 @@ program/savedir.txt
 
 # A virtual environment beside the program, if you make one there.
 program/.venv
+
+# What packaging/ builds.
+/build/
+/dist/

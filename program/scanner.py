@@ -44,6 +44,7 @@ import os
 import pathlib
 import random
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -76,14 +77,30 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow
 
 PRGNAME = "pale-wallscan"
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# Two folders, which are the same folder unless this is the installed copy.
+#
+# HERE holds what ships: the page, the harvested theme list, the examples.
+# DATA holds everything this program writes. Run from a clone, both are this
+# folder, as they always were. Installed by the Windows setup, the program is
+# a frozen bundle in a folder it has no business writing into, so what it
+# writes goes to a folder of its own in the user's AppData instead -- still one
+# place, still deletable to start again, just not beside the program.
+FROZEN = getattr(sys, "frozen", False)
+if FROZEN:
+    HERE = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    DATA = os.path.join(os.environ.get("LOCALAPPDATA")
+                        or os.path.expanduser("~"), "Wallpaper Finder")
+    os.makedirs(DATA, exist_ok=True)
+else:
+    HERE = os.path.dirname(os.path.abspath(__file__))
+    DATA = HERE
 HTML_PATH = os.path.join(HERE, "ui", "index.html")
 
 # Where previews land while they are being looked at. Inside this folder, and
 # emptied on the "stop and delete thumbnails" answer -- which is the whole
 # reason they are real files rather than something drawn in the page: a
 # question about deleting them should have something to delete.
-THUMBS = os.path.join(HERE, "cache", "thumbs")
+THUMBS = os.path.join(DATA, "cache", "thumbs")
 
 # Every wallpaper this program has ever put in front of him, one `source:id` a
 # line. He asked for a rough record so it stops offering him the same things,
@@ -97,7 +114,7 @@ THUMBS = os.path.join(HERE, "cache", "thumbs")
 # fact -- two soak runs put 120 ids in his record before anyone noticed --
 # which is why the override is here and the tests use it.
 OFFERED = os.environ.get("WALLSCAN_OFFERED") or os.path.join(
-    HERE, "offered.txt")
+    DATA, "offered.txt")
 
 # The wallpapers themselves are the one thing that leaves this folder.
 #
@@ -115,7 +132,7 @@ LIBRARY = os.environ.get("WALLSCAN_LIBRARY") or os.path.expanduser(
 # start again deletes one file they can see rather than hunting through
 # ~/.config or AppData. One line, a path, nothing else.
 SAVEDIR_FILE = os.environ.get("WALLSCAN_SAVEDIR_FILE") or os.path.join(
-    HERE, "savedir.txt")
+    DATA, "savedir.txt")
 
 
 def setup_output():
@@ -137,8 +154,8 @@ def setup_output():
     better than dying of one.
     """
     if sys.stdout is None:
-        os.makedirs(os.path.join(HERE, "cache"), exist_ok=True)
-        log = io.open(os.path.join(HERE, "cache", "launch.log"), "a",
+        os.makedirs(os.path.join(DATA, "cache"), exist_ok=True)
+        log = io.open(os.path.join(DATA, "cache", "launch.log"), "a",
                       encoding="utf-8", errors="replace", buffering=1)
         sys.stdout = log
         sys.stderr = log
@@ -258,7 +275,7 @@ def _keys():
     """
     found = {}
     try:
-        with open(os.path.join(HERE, "keys.txt"),
+        with open(os.path.join(DATA, "keys.txt"),
                   encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
@@ -427,7 +444,16 @@ STARTER_THEMES = ["City", "Night", "Mountain", "Road", "Forest", "Rain",
 #
 # The undocumented `/autocomplete` endpoint the website uses was tried first
 # and answers 404 to this program (2026-08-26).
-THEME_CACHE = os.path.join(HERE, "cache", "themes.json")
+THEME_CACHE = os.path.join(DATA, "cache", "themes.json")
+# The installed copy starts from the list it shipped with, copied once into
+# its own folder, so a refresh has somewhere it may write.
+if FROZEN and not os.path.exists(THEME_CACHE):
+    try:
+        os.makedirs(os.path.dirname(THEME_CACHE), exist_ok=True)
+        shutil.copyfile(os.path.join(HERE, "cache", "themes.json"),
+                        THEME_CACHE)
+    except OSError:
+        pass
 
 # Past this, a cached harvest is refreshed -- in the background, never at
 # startup. A window that waits on a quarter of an hour of network before it
@@ -946,7 +972,7 @@ ATLEAST = SIZE_BY_ID[DEFAULT_SIZE]["atleast"]
 # choice to make, not this program's. No file, no contact, and Commons is
 # offered with a warning instead of quietly failing half its previews.
 def _contact():
-    path = os.path.join(HERE, "contact.txt")
+    path = os.path.join(DATA, "contact.txt")
     try:
         with open(path, encoding="utf-8") as handle:
             for line in handle:
@@ -1522,7 +1548,7 @@ def _build_fetchers():
 
 FETCHERS = _build_fetchers()
 
-KEYS_PATH = os.path.join(HERE, "keys.txt")
+KEYS_PATH = os.path.join(DATA, "keys.txt")
 
 
 def save_key(name, value):
@@ -1553,7 +1579,7 @@ def save_key(name, value):
         # than an empty file: it carries the sign-up links and the warning
         # that this file is not for sharing.
         try:
-            existing = io.open(KEYS_PATH + ".example",
+            existing = io.open(os.path.join(HERE, "keys.txt.example"),
                                encoding="utf-8").read().splitlines()
         except OSError:
             existing = ["# API keys. One `name = value` a line."]
@@ -1918,7 +1944,7 @@ def main():
               % (len(seen), pretty_path(where)), flush=True)
     print("scanner: %d already offered to you before (offered.txt — delete it "
           "to start being shown them again)" % len(offered), flush=True)
-    if OFFERED != os.path.join(HERE, "offered.txt"):
+    if OFFERED != os.path.join(DATA, "offered.txt"):
         print("scanner: RECORDING TO %s, not the real record" % OFFERED,
               flush=True)
     if LIBRARY != os.path.expanduser("~/Pictures/wallpapers"):
