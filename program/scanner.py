@@ -65,8 +65,8 @@ import urllib.request
 # Every window trick this program leans on had to be found again in Qt. Each
 # one is marked `host:` where it lands, so the seams are readable rather than
 # buried.
-from PySide6.QtCore import (QFile, QObject, QRectF, Qt, QTimer,
-                            QUrl, Signal, Slot)
+from PySide6.QtCore import (QFile, QObject, QRectF, QStandardPaths, Qt,
+                            QTimer, QUrl, Signal, Slot)
 from PySide6.QtGui import (QColor, QImage, QLinearGradient, QPainter)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebChannel import QWebChannel
@@ -122,8 +122,22 @@ OFFERED = os.environ.get("WALLSCAN_OFFERED") or os.path.join(
 # tested without putting two wallpapers he did not choose into the folder his
 # desktop rotates through. A test that has to dirty the real thing to prove
 # itself is a test nobody runs twice.
-LIBRARY = os.environ.get("WALLSCAN_LIBRARY") or os.path.expanduser(
-    "~/Pictures/wallpapers")
+#
+# On Windows the Pictures folder is asked of Windows rather than assumed. Most
+# Windows 11 machines have OneDrive move it to OneDrive\Pictures, and
+# ~/Pictures is then a folder nobody looks in: a friend's saves "vanished"
+# into exactly that (2026-11-22).
+def _pictures():
+    if os.name == "nt":
+        found = QStandardPaths.writableLocation(
+            QStandardPaths.PicturesLocation)
+        if found:
+            return os.path.normpath(found)
+    return os.path.expanduser("~/Pictures")
+
+
+DEFAULT_LIBRARY = os.path.join(_pictures(), "wallpapers")
+LIBRARY = os.environ.get("WALLSCAN_LIBRARY") or DEFAULT_LIBRARY
 
 # Where the last save went, so the folder only has to be chosen once.
 #
@@ -192,6 +206,13 @@ def load_savedir():
         with open(SAVEDIR_FILE, encoding="utf-8") as handle:
             line = handle.read().strip()
     except OSError:
+        return LIBRARY
+    # The folder 1.0.0 picked on Windows by assuming ~/Pictures, which on a
+    # OneDrive machine is not the Pictures anyone opens. Remembered there, it
+    # moves to the real one rather than staying lost.
+    old = os.path.normpath(os.path.expanduser("~/Pictures/wallpapers"))
+    if os.name == "nt" and line and os.path.normpath(line) == old \
+            and old != os.path.normpath(DEFAULT_LIBRARY):
         return LIBRARY
     if line and os.path.isdir(line):
         return line
@@ -1947,7 +1968,7 @@ def main():
     if OFFERED != os.path.join(DATA, "offered.txt"):
         print("scanner: RECORDING TO %s, not the real record" % OFFERED,
               flush=True)
-    if LIBRARY != os.path.expanduser("~/Pictures/wallpapers"):
+    if LIBRARY != DEFAULT_LIBRARY:
         print("scanner: SAVING TO %s, not the real library" % LIBRARY,
               flush=True)
     if not CONTACT:
@@ -2621,6 +2642,7 @@ def main():
             print("scanner: folder chooser cancelled, still saving to %s"
                   % state["savedir"], flush=True)
             return
+        chosen = os.path.normpath(chosen)   # Qt hands Windows paths over with /
         state["savedir"] = chosen
         save_savedir(chosen)
         relearn_folder(chosen)
@@ -2639,7 +2661,8 @@ def main():
         # The folder the page had on its panel when the button was pressed.
         # Trusted only as far as it being a real folder: anything else falls
         # back to what this side already had rather than failing per file.
-        where = payload.get("dir") or state["savedir"] or LIBRARY
+        where = os.path.normpath(payload.get("dir") or state["savedir"]
+                                 or LIBRARY)
         if where != state["savedir"]:
             state["savedir"] = where
             save_savedir(where)
@@ -2667,6 +2690,7 @@ def main():
 
         if not rows:
             say("scanner_setStatus", "nothing to save")
+            say("scanner_saved", 0, 0, 0)   # the page waits for an answer
             return
 
         flag = threading.Event()
@@ -2687,6 +2711,22 @@ def main():
             say("scanner_clearPicks")
         print("scanner: %s" % line, flush=True)
         return False
+
+    def replace_soon(part, target):
+        """os.replace, a few times over a second and a half on Windows.
+
+        A file that has just been written is often held open for a moment by
+        the virus scanner there, and the rename fails with "being used by
+        another process" (WinError 32) although nothing is wrong.
+        """
+        for attempt in range(8):
+            try:
+                os.replace(part, target)
+                return
+            except PermissionError:
+                if os.name != "nt" or attempt == 7:
+                    raise
+                time.sleep(0.2)
 
     def save_all(rows, stopflag, where):
         """Fetch each chosen wallpaper at full size, on its own thread.
@@ -2748,7 +2788,7 @@ def main():
             try:
                 with open(part, "wb") as handle:
                     handle.write(blob)
-                os.replace(part, target)
+                replace_soon(part, target)
             except Exception as exc:
                 failed += 1
                 if os.path.exists(part):
